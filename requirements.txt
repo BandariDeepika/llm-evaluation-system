@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+streamlit
+openai
+python-dotenv
+pydantic
+langchain
+langgraph
+sentence-transformers
+chromadb
+datasets
+scikit-learn
+python-multipart
+pytest
+requests
