@@ -1,0 +1,47 @@
+[
+  {
+    "id": "qa_01",
+    "question": "What is the capital of France?",
+    "ai_response": "The capital of France is Paris.",
+    "reference_answer": "Paris is the capital of France.",
+    "expected_relevance": "fully_relevant",
+    "expected_accuracy": "correct",
+    "expected_hallucination": false
+  },
+  {
+    "id": "qa_02",
+    "question": "What is the capital of France?",
+    "ai_response": "The capital of France is Paris. France is in South America.",
+    "reference_answer": "Paris is the capital of France. France is in Europe.",
+    "expected_relevance": "fully_relevant",
+    "expected_accuracy": "partially_correct",
+    "expected_hallucination": true
+  },
+  {
+    "id": "qa_03",
+    "question": "What is the capital of France?",
+    "ai_response": "The capital of France is London.",
+    "reference_answer": "Paris is the capital of France.",
+    "expected_relevance": "fully_relevant",
+    "expected_accuracy": "contradictory",
+    "expected_hallucination": true
+  },
+  {
+    "id": "qa_04",
+    "question": "What is a microprocessor?",
+    "ai_response": "A microprocessor is a programmable integrated circuit that performs arithmetic and logical operations.",
+    "reference_answer": "A microprocessor is an integrated circuit that contains the functions of a central processing unit.",
+    "expected_relevance": "fully_relevant",
+    "expected_accuracy": "partially_correct",
+    "expected_hallucination": false
+  },
+  {
+    "id": "qa_05",
+    "question": "What is the capital of France?",
+    "ai_response": "The Sun is a star at the center of the Solar System.",
+    "reference_answer": "Paris is the capital of France.",
+    "expected_relevance": "completely_unrelated",
+    "expected_accuracy": "incorrect",
+    "expected_hallucination": true
+  }
+]

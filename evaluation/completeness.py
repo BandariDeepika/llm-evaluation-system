@@ -19,6 +19,7 @@ def evaluate_completeness(
         response_words = tokenize(ai_response)
 
         missing = sorted(target_words - response_words)
+
         score = 10 * (
             1 - len(missing) / max(len(target_words), 1)
         )
