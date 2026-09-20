@@ -133,4 +133,47 @@ class EvaluationResponse(BaseModel):
     evaluation_reasoning: dict[str, str] = Field(
         default_factory=dict
     )
-    
+
+    # ---------------------------------------------------------
+    # M3.1 Completeness Judge details
+    # ---------------------------------------------------------
+
+    completeness_addressed_aspects: list[str] = Field(
+        default_factory=list
+    )
+
+    completeness_partial_aspects: list[str] = Field(
+        default_factory=list
+    )
+
+    completeness_missing_aspects: list[str] = Field(
+        default_factory=list
+    )
+
+    completeness_reasoning: str = ""
+
+    # ---------------------------------------------------------
+    # M3.2 Verdict Agent details
+    # ---------------------------------------------------------
+
+    verdict: Literal[
+        "PASS",
+        "NEEDS IMPROVEMENT",
+        "FAIL",
+    ] = "NEEDS IMPROVEMENT"
+
+    verdict_overall_score: Optional[float] = Field(
+        default=None,
+        ge=0,
+        le=10,
+    )
+
+    verdict_major_issues: list[str] = Field(
+        default_factory=list
+    )
+
+    verdict_consolidated_reasoning: str = ""
+
+    verdict_weights: dict[str, float] = Field(
+        default_factory=dict
+    )

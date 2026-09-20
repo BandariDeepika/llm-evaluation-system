@@ -1,0 +1,11 @@
+A	docs/M2.1-judge-implementation.md
+A	docs/M2.2-validation-results.md
+M	evaluation/common.py
+M	evaluation/completeness.py
+M	evaluation/factuality.py
+M	evaluation/faithfulness.py
+M	evaluation/hallucination.py
+M	evaluation/relevance.py
+M	frontend/app.py
+A	m2_validation.json
+A	tests/test_m2_validation.py

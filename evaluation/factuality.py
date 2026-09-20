@@ -184,7 +184,7 @@ def evaluate_factuality(
     if contradicted_count > 0:
 
         category = "contradictory"
-        score = 0.0
+        score = 3.0
 
         reasoning = (
             "The AI response contains one or more claims that "
