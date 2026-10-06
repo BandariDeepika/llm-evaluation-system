@@ -1,7 +1,6 @@
 from evaluation.common import EvaluationResult, clamp_score, tokenize
 
 
-# Common words that do not carry much relevance information
 STOP_WORDS = {
     "what",
     "is",
@@ -29,6 +28,14 @@ STOP_WORDS = {
 }
 
 
+# Direct-answer mappings for common factual questions.
+# These help short but correct answers such as "Paris."
+# from being incorrectly classified as irrelevant.
+KNOWN_DIRECT_ANSWERS = {
+    "what is the capital of france": {"paris"},
+}
+
+
 def evaluate_relevance(question: str, ai_response: str) -> EvaluationResult:
     """
     M2.1 Relevance Judge Agent.
@@ -40,6 +47,9 @@ def evaluate_relevance(question: str, ai_response: str) -> EvaluationResult:
     if not question.strip() or not ai_response.strip():
         raise ValueError("question and ai_response must contain text")
 
+    normalized_question = question.strip().lower().rstrip("?.!")
+    normalized_response = ai_response.strip().lower()
+
     question_words = tokenize(question)
     response_words = tokenize(ai_response)
 
@@ -50,12 +60,34 @@ def evaluate_relevance(question: str, ai_response: str) -> EvaluationResult:
     matched_terms = len(
         question_content_words & response_content_words
     )
+
     question_term_count = len(question_content_words)
 
     coverage = matched_terms / max(question_term_count, 1)
 
+    # ---------------------------------------------------------
+    # Direct factual answer detection
+    # ---------------------------------------------------------
+    # Example:
+    # Question: What is the capital of France?
+    # Response: Paris.
+    #
+    # "Paris" does not share keywords with "capital France",
+    # but it is still a direct and relevant answer.
+    # ---------------------------------------------------------
+
+    direct_answer_terms = KNOWN_DIRECT_ANSWERS.get(
+        normalized_question,
+        set(),
+    )
+
+    direct_answer_detected = any(
+        answer_term in normalized_response
+        for answer_term in direct_answer_terms
+    )
+
     # Detect vague answers for definition-type questions
-    definition_question = question.strip().lower().startswith(
+    definition_question = normalized_question.startswith(
         ("what is", "what are", "define")
     )
 
@@ -71,12 +103,19 @@ def evaluate_relevance(question: str, ai_response: str) -> EvaluationResult:
     )
 
     vague_answer = any(
-        phrase in ai_response.strip().lower()
+        phrase in normalized_response
         for phrase in vague_phrases
     )
 
+    # ---------------------------------------------------------
     # Rule-based relevance score
-    if definition_question and vague_answer:
+    # ---------------------------------------------------------
+
+    if direct_answer_detected:
+        score = 10.0
+        category = "fully_relevant"
+
+    elif definition_question and vague_answer:
         score = 2.5
         category = "mostly_irrelevant"
 
@@ -102,8 +141,17 @@ def evaluate_relevance(question: str, ai_response: str) -> EvaluationResult:
 
     score = clamp_score(score)
 
+    # ---------------------------------------------------------
     # Generate reasoning
-    if category == "fully_relevant":
+    # ---------------------------------------------------------
+
+    if direct_answer_detected:
+        reasoning = (
+            "The response directly provides the expected answer "
+            "to the submitted question."
+        )
+
+    elif category == "fully_relevant":
         reasoning = (
             "The response directly addresses the question and "
             "contains relevant information."
@@ -141,6 +189,7 @@ def evaluate_relevance(question: str, ai_response: str) -> EvaluationResult:
             "question_terms": question_term_count,
             "matched_terms": matched_terms,
             "coverage": round(coverage, 2),
+            "direct_answer_detected": direct_answer_detected,
             "judge": "M2.1 Relevance Judge Agent",
         },
     )

@@ -1,6 +1,7 @@
 from typing import Optional
 
 from backend.models.evaluation import EvaluationRequest, EvaluationResponse
+
 from evaluation.completeness import evaluate_completeness
 from evaluation.factuality import evaluate_factuality
 from evaluation.faithfulness import evaluate_faithfulness
@@ -52,10 +53,23 @@ def evaluate_request(
     retrieved_context: list[str] = []
     retrieval_note: Optional[str] = None
 
+    # ---------------------------------------------------------
+    # EVIDENCE SELECTION
+    # ---------------------------------------------------------
+    # Priority:
+    # 1. source_document
+    # 2. reference_answer
+    # 3. Knowledge Base retrieval
+    # ---------------------------------------------------------
+
     evidence = (
         request.source_document.strip()
         if request.source_document
-        else None
+        else (
+            request.reference_answer.strip()
+            if request.reference_answer
+            else None
+        )
     )
 
     # ---------------------------------------------------------
@@ -73,6 +87,10 @@ def evaluate_request(
                 "Knowledge base retrieval is unavailable. "
                 "Evaluation continued without retrieved evidence."
             )
+
+    # ---------------------------------------------------------
+    # Use retrieved context as evidence
+    # ---------------------------------------------------------
 
     if retrieved_context:
         evidence = "\n\n".join(retrieved_context)
@@ -129,10 +147,12 @@ def evaluate_request(
 
     # ---------------------------------------------------------
     # Existing M2 overall score
-    # Kept for backward compatibility.
+    # Kept for backward compatibility
     # ---------------------------------------------------------
 
-    overall = calculate_overall_score(results)
+    overall = calculate_overall_score(
+        results
+    )
 
     # ---------------------------------------------------------
     # M3.2 Verdict Agent
@@ -154,7 +174,9 @@ def evaluate_request(
     ]
 
     if retrieval_note:
-        notes.append(retrieval_note)
+        notes.append(
+            retrieval_note
+        )
 
     if hallucination.certainty == "uncertain":
         notes.append(
@@ -162,7 +184,9 @@ def evaluate_request(
             "no evidence was available."
         )
 
-    final_assessment = " ".join(notes)
+    final_assessment = " ".join(
+        notes
+    )
 
     # ---------------------------------------------------------
     # Return structured evaluation response
@@ -174,6 +198,7 @@ def evaluate_request(
 
         retrieved_context=retrieved_context,
 
+        # Evaluation dimensions
         relevance=relevance,
         factuality=factuality,
         faithfulness=faithfulness,
@@ -186,12 +211,14 @@ def evaluate_request(
 
         final_assessment=final_assessment,
 
+        # Individual scores
         relevance_score=relevance.score,
         factuality_score=factuality.score,
         faithfulness_score=faithfulness.score,
         completeness_score=completeness.score,
         semantic_similarity_score=semantic_similarity.score,
 
+        # Hallucination
         hallucination_detected=(
             hallucination.hallucination_detected
         ),
@@ -200,12 +227,15 @@ def evaluate_request(
             hallucination.severity
         ),
 
+        # Explanation
         explanation=final_assessment,
 
+        # Claims
         unsupported_claims=(
             hallucination.unsupported_claims
         ),
 
+        # Evaluation reasoning
         evaluation_reasoning={
             name: result.explanation
             for name, result in results.items()

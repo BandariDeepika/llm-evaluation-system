@@ -1,16 +1,30 @@
-import requests
-import pandas as pd
 import streamlit as st
+import pandas as pd
+import requests
+
+from io import BytesIO
+from xml.sax.saxutils import escape
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
+    PageBreak,
+)
 
 
 # ============================================================
-# CONFIGURATION
+# PAGE CONFIGURATION
 # ============================================================
-
-BACKEND_URL = "http://127.0.0.1:8001"
 
 st.set_page_config(
-    page_title="Automated LLM Evaluation",
+    page_title="LLM Evaluation Dashboard",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -18,7 +32,7 @@ st.set_page_config(
 
 
 # ============================================================
-# DARK PROFESSIONAL UI
+# CUSTOM CSS
 # ============================================================
 
 st.markdown(
@@ -26,221 +40,23 @@ st.markdown(
     <style>
 
     .stApp {
-        background: #080d18;
-        color: #e5e7eb;
+        background: #0e1117;
     }
 
-    .main .block-container {
-        max-width: 1450px;
-        padding-top: 2rem;
-        padding-bottom: 3rem;
+    [data-testid="stSidebar"] {
+        background: #111827;
     }
 
-    /* SIDEBAR */
-
-    section[data-testid="stSidebar"] {
-        background: #060a12;
-        border-right: 1px solid #1e293b;
-    }
-
-    section[data-testid="stSidebar"] * {
-        color: #e2e8f0;
-    }
-
-    .brand {
-        padding: 15px 5px 25px 5px;
-        border-bottom: 1px solid #1e293b;
-        margin-bottom: 20px;
-    }
-
-    .brand-title {
-        font-size: 20px;
-        font-weight: 800;
-        color: #f8fafc;
-    }
-
-    .brand-subtitle {
-        font-size: 12px;
-        color: #64748b;
-        margin-top: 5px;
-    }
-
-    .sidebar-footer {
-        margin-top: 35px;
-        padding-top: 20px;
-        border-top: 1px solid #1e293b;
-        color: #64748b;
-        font-size: 11px;
-        line-height: 1.6;
-    }
-
-    /* HEADERS */
-
-    .hero-title {
-        font-size: 36px;
-        font-weight: 800;
-        color: #f8fafc;
-        line-height: 1.2;
-        margin-bottom: 10px;
-    }
-
-    .hero-subtitle {
-        font-size: 16px;
-        color: #94a3b8;
-        margin-bottom: 25px;
-    }
-
-    .page-title {
-        font-size: 32px;
-        font-weight: 800;
-        color: #f8fafc;
+    .main-title {
+        font-size: 38px;
+        font-weight: 700;
         margin-bottom: 5px;
     }
 
-    .page-subtitle {
-        color: #94a3b8;
-        font-size: 15px;
+    .sub-title {
+        font-size: 17px;
+        opacity: 0.75;
         margin-bottom: 25px;
-    }
-
-    /* DASHBOARD CARDS */
-
-    .feature-card {
-        background: linear-gradient(
-            145deg,
-            #111827,
-            #0f172a
-        );
-        border: 1px solid #263449;
-        border-radius: 18px;
-        padding: 25px;
-        min-height: 175px;
-        margin-bottom: 18px;
-    }
-
-    .feature-icon {
-        font-size: 30px;
-        margin-bottom: 12px;
-    }
-
-    .feature-title {
-        color: #f8fafc;
-        font-size: 21px;
-        font-weight: 750;
-        margin-bottom: 8px;
-    }
-
-    .feature-text {
-        color: #94a3b8;
-        font-size: 14px;
-        line-height: 1.7;
-    }
-
-    /* METRICS */
-
-    [data-testid="stMetric"] {
-        background: #111827;
-        border: 1px solid #263449;
-        border-radius: 14px;
-        padding: 18px;
-    }
-
-    [data-testid="stMetricLabel"] {
-        color: #94a3b8 !important;
-    }
-
-    [data-testid="stMetricValue"] {
-        color: #f8fafc !important;
-    }
-
-    /* INPUTS */
-
-    textarea,
-    input {
-        background-color: #111827 !important;
-        color: #f8fafc !important;
-        border: 1px solid #334155 !important;
-        border-radius: 10px !important;
-    }
-
-    label {
-        color: #cbd5e1 !important;
-        font-weight: 600 !important;
-    }
-
-    /* BUTTONS */
-
-    .stButton > button {
-        background: #2563eb;
-        color: white;
-        border: 1px solid #3b82f6;
-        border-radius: 10px;
-        font-weight: 700;
-        padding: 10px 20px;
-    }
-
-    .stButton > button:hover {
-        background: #1d4ed8;
-    }
-
-    /* JUDGE CARDS */
-
-    .judge-card {
-        background: #111827;
-        border: 1px solid #263449;
-        border-radius: 15px;
-        padding: 22px;
-        margin-top: 15px;
-        margin-bottom: 15px;
-    }
-
-    .judge-title {
-        color: #f8fafc;
-        font-size: 20px;
-        font-weight: 750;
-        margin-bottom: 15px;
-    }
-
-    /* VERDICT */
-
-    .verdict-card {
-        background: #111827;
-        border: 1px solid #263449;
-        border-radius: 18px;
-        padding: 25px;
-        margin-top: 15px;
-        margin-bottom: 20px;
-    }
-
-    .verdict-label {
-        color: #94a3b8;
-        font-size: 14px;
-    }
-
-    .verdict-value {
-        color: #f8fafc;
-        font-size: 32px;
-        font-weight: 800;
-    }
-
-    /* DATAFRAME */
-
-    [data-testid="stDataFrame"] {
-        border: 1px solid #263449;
-        border-radius: 12px;
-        overflow: hidden;
-    }
-
-    /* EXPANDER */
-
-    details {
-        background: #111827 !important;
-        border: 1px solid #263449 !important;
-        border-radius: 10px !important;
-    }
-
-    hr {
-        border-color: #263449;
     }
 
     </style>
@@ -250,58 +66,1774 @@ st.markdown(
 
 
 # ============================================================
-# SESSION STATE
+# API CONFIGURATION
 # ============================================================
 
-if "single_report" not in st.session_state:
-    st.session_state.single_report = None
+API_URL = "http://127.0.0.1:8001/evaluate"
+
+
+# ============================================================
+# SESSION STATE
+# ============================================================
 
 if "batch_results" not in st.session_state:
     st.session_state.batch_results = None
 
+if "single_result" not in st.session_state:
+    st.session_state.single_result = None
+
 
 # ============================================================
-# SIDEBAR
+# HELPER FUNCTIONS
 # ============================================================
 
-with st.sidebar:
+def safe_average(df, column):
 
-    st.markdown(
-        """
-        <div class="brand">
-            <div class="brand-title">
-                🤖 LLM Evaluation
-            </div>
-            <div class="brand-subtitle">
-                AI Response Quality Platform
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    if column not in df.columns:
+        return None
+
+    values = pd.to_numeric(
+        df[column],
+        errors="coerce"
+    ).dropna()
+
+    if values.empty:
+        return None
+
+    return float(values.mean())
+
+
+def get_value(data, names, default=None):
+
+    if not isinstance(data, dict):
+        return default
+
+    for name in names:
+
+        if name in data:
+            return data[name]
+
+    return default
+
+
+def normalize_score(value):
+
+    if isinstance(value, dict):
+
+        return value.get(
+            "score",
+            value.get("value", None)
+        )
+
+    return value
+
+
+def clean_verdict(value):
+
+    if value is None:
+        return "UNKNOWN"
+
+    text = str(value).strip().upper()
+
+    if text == "PASS":
+        return "PASS"
+
+    if text in [
+        "NEEDS IMPROVEMENT",
+        "NEEDS_IMPROVEMENT",
+        "NEEDS-IMPROVEMENT",
+    ]:
+        return "NEEDS IMPROVEMENT"
+
+    if text == "FAIL":
+        return "FAIL"
+
+    if text == "ERROR":
+        return "ERROR"
+
+    return text
+
+
+def format_score(value):
+
+    if value is None:
+        return "N/A"
+
+    try:
+
+        if pd.isna(value):
+            return "N/A"
+
+    except Exception:
+        pass
+
+    try:
+        return f"{float(value):.2f}"
+
+    except Exception:
+        return str(value)
+
+
+def extract_nested_score(data, key):
+
+    value = data.get(key)
+
+    if isinstance(value, dict):
+        return value.get("score")
+
+    return value
+
+
+def extract_hallucination_status(data):
+
+    hallucination = data.get(
+        "hallucination",
+        {}
     )
 
-    page = st.radio(
-        "Navigation",
+    if not isinstance(hallucination, dict):
+        return "N/A"
+
+    certainty = str(
+        hallucination.get(
+            "certainty",
+            ""
+        )
+    ).lower()
+
+    detected = hallucination.get(
+        "hallucination_detected"
+    )
+
+    unsupported = hallucination.get(
+        "unsupported_claims",
+        []
+    )
+
+    if certainty == "uncertain":
+        return "Uncertain"
+
+    if detected is True:
+        return "Detected"
+
+    if detected is False:
+        return "Not Detected"
+
+    if isinstance(unsupported, list) and unsupported:
+        return "Detected"
+
+    return "N/A"
+
+
+# ============================================================
+# M4.2 - PDF HELPER FUNCTIONS
+# ============================================================
+
+def pdf_clean_text(value):
+
+    if value is None:
+        return ""
+
+    if isinstance(value, float):
+
+        try:
+
+            if pd.isna(value):
+                return ""
+
+        except Exception:
+            pass
+
+    if isinstance(value, list):
+
+        return ", ".join(
+            str(item)
+            for item in value
+        )
+
+    if isinstance(value, dict):
+
+        return str(value)
+
+    return str(value)
+
+
+def pdf_escape(value):
+
+    return escape(
+        pdf_clean_text(value)
+    )
+
+
+def pdf_score(value):
+
+    if value is None:
+        return "N/A"
+
+    try:
+
+        if pd.isna(value):
+            return "N/A"
+
+    except Exception:
+        pass
+
+    try:
+
+        return f"{float(value):.2f}"
+
+    except Exception:
+
+        text = pdf_clean_text(value)
+
+        if not text:
+            return "N/A"
+
+        return text
+
+
+def create_batch_pdf(results_df):
+
+    """
+    M4.2 PDF Batch Summary
+
+    Generates a professional PDF containing:
+
+    1. Batch summary
+    2. Verdict distribution
+    3. Average evaluation scores
+    4. Hallucination analysis
+    5. Completeness analysis
+    6. Individual evaluation results
+    7. Evaluation reasoning
+    8. Verdict reasoning
+    9. Unsupported claims
+    10. Missing / partial aspects
+    11. Recommendations
+    """
+
+    if results_df is None:
+        raise ValueError(
+            "No batch evaluation results available."
+        )
+
+    if results_df.empty:
+        raise ValueError(
+            "Batch evaluation results are empty."
+        )
+
+    df = results_df.copy()
+
+    buffer = BytesIO()
+
+    # --------------------------------------------------------
+    # PDF DOCUMENT
+    # --------------------------------------------------------
+
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=36,
+        leftMargin=36,
+        topMargin=40,
+        bottomMargin=40,
+        title="LLM Batch Evaluation Summary",
+        author=(
+            "Automated LLM Evaluation and "
+            "Hallucination Detection System"
+        ),
+    )
+
+    # --------------------------------------------------------
+    # STYLES
+    # --------------------------------------------------------
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        "PDFTitle",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=19,
+        leading=23,
+        alignment=TA_CENTER,
+        spaceAfter=8,
+    )
+
+    subtitle_style = ParagraphStyle(
+        "PDFSubtitle",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=9,
+        leading=12,
+        alignment=TA_CENTER,
+        spaceAfter=18,
+    )
+
+    heading_style = ParagraphStyle(
+        "PDFHeading",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=13,
+        leading=16,
+        spaceBefore=12,
+        spaceAfter=8,
+    )
+
+    subheading_style = ParagraphStyle(
+        "PDFSubHeading",
+        parent=styles["Heading3"],
+        fontName="Helvetica-Bold",
+        fontSize=10,
+        leading=13,
+        spaceBefore=8,
+        spaceAfter=5,
+    )
+
+    normal_style = ParagraphStyle(
+        "PDFNormal",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=8.5,
+        leading=12,
+        spaceAfter=6,
+    )
+
+    small_style = ParagraphStyle(
+        "PDFSmall",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=7.5,
+        leading=10,
+        spaceAfter=4,
+    )
+
+    # --------------------------------------------------------
+    # STORY
+    # --------------------------------------------------------
+
+    story = []
+
+    # --------------------------------------------------------
+    # BASIC COUNTS
+    # --------------------------------------------------------
+
+    total = len(df)
+
+    if "Verdict" in df.columns:
+
+        verdict_series = (
+            df["Verdict"]
+            .astype(str)
+            .apply(clean_verdict)
+        )
+
+    else:
+
+        verdict_series = pd.Series(
+            ["UNKNOWN"] * total
+        )
+
+    pass_count = int(
+        (verdict_series == "PASS").sum()
+    )
+
+    needs_count = int(
+        (
+            verdict_series
+            == "NEEDS IMPROVEMENT"
+        ).sum()
+    )
+
+    fail_count = int(
+        (verdict_series == "FAIL").sum()
+    )
+
+    error_count = int(
+        (verdict_series == "ERROR").sum()
+    )
+
+    pass_percentage = (
+        pass_count / total * 100
+        if total
+        else 0
+    )
+
+    needs_percentage = (
+        needs_count / total * 100
+        if total
+        else 0
+    )
+
+    fail_percentage = (
+        fail_count / total * 100
+        if total
+        else 0
+    )
+
+    # --------------------------------------------------------
+    # AVERAGE SCORES
+    # --------------------------------------------------------
+
+    avg_relevance = safe_average(
+        df,
+        "Relevance"
+    )
+
+    avg_factuality = safe_average(
+        df,
+        "Factuality"
+    )
+
+    avg_faithfulness = safe_average(
+        df,
+        "Faithfulness"
+    )
+
+    avg_completeness = safe_average(
+        df,
+        "Completeness"
+    )
+
+    avg_semantic_similarity = safe_average(
+        df,
+        "Semantic Similarity"
+    )
+
+    avg_overall_score = safe_average(
+        df,
+        "Overall Score"
+    )
+
+    avg_weighted_score = safe_average(
+        df,
+        "Weighted Score"
+    )
+
+    # --------------------------------------------------------
+    # HALLUCINATION ANALYSIS
+    # --------------------------------------------------------
+
+    hallucination_count = 0
+    uncertain_hallucination_count = 0
+    not_detected_count = 0
+    unsupported_claim_count = 0
+
+    if "Hallucination" in df.columns:
+
+        for value in df["Hallucination"]:
+
+            status = str(
+                value
+            ).strip().lower()
+
+            if status == "detected":
+
+                hallucination_count += 1
+
+            elif status == "uncertain":
+
+                uncertain_hallucination_count += 1
+
+            elif status == "not detected":
+
+                not_detected_count += 1
+
+    # Count unsupported claims from Full Report
+    if "Full Report" in df.columns:
+
+        for report in df["Full Report"]:
+
+            if isinstance(report, dict):
+
+                hallucination_data = report.get(
+                    "hallucination",
+                    {}
+                )
+
+                if isinstance(
+                    hallucination_data,
+                    dict
+                ):
+
+                    claims = hallucination_data.get(
+                        "unsupported_claims",
+                        []
+                    )
+
+                    if isinstance(claims, list):
+
+                        unsupported_claim_count += len(
+                            claims
+                        )
+
+    # --------------------------------------------------------
+    # COMPLETENESS ANALYSIS
+    # --------------------------------------------------------
+
+    missing_aspects_count = 0
+    partial_aspects_count = 0
+
+    if "Full Report" in df.columns:
+
+        for report in df["Full Report"]:
+
+            if isinstance(report, dict):
+
+                completeness_data = report.get(
+                    "completeness",
+                    {}
+                )
+
+                if isinstance(
+                    completeness_data,
+                    dict
+                ):
+
+                    details = completeness_data.get(
+                        "details",
+                        {}
+                    )
+
+                    if isinstance(
+                        details,
+                        dict
+                    ):
+
+                        missing = details.get(
+                            "missing_aspects",
+                            []
+                        )
+
+                        partial = details.get(
+                            "partial_aspects",
+                            []
+                        )
+
+                        if isinstance(
+                            missing,
+                            list
+                        ):
+
+                            missing_aspects_count += len(
+                                missing
+                            )
+
+                        if isinstance(
+                            partial,
+                            list
+                        ):
+
+                            partial_aspects_count += len(
+                                partial
+                            )
+
+    # ========================================================
+    # TITLE
+    # ========================================================
+
+    story.append(
+        Paragraph(
+            "Automated LLM Evaluation and "
+            "Hallucination Detection System",
+            title_style
+        )
+    )
+
+    story.append(
+        Paragraph(
+            "M4.2 - Batch Evaluation Summary Report",
+            subtitle_style
+        )
+    )
+
+    story.append(
+        Paragraph(
+            "This report summarizes the automated "
+            "evaluation of multiple AI-generated responses.",
+            normal_style
+        )
+    )
+
+    story.append(
+        Spacer(1, 8)
+    )
+
+    # ========================================================
+    # 1. BATCH SUMMARY
+    # ========================================================
+
+    story.append(
+        Paragraph(
+            "1. Batch Evaluation Summary",
+            heading_style
+        )
+    )
+
+    summary_data = [
+        ["Metric", "Value"],
         [
-            "🏠 Dashboard",
-            "🔍 Single Evaluation",
-            "📊 Batch Evaluation",
-            "📋 Results",
-            "ℹ️ About",
+            "Total Responses",
+            str(total)
         ],
-        label_visibility="collapsed",
+        [
+            "PASS",
+            f"{pass_count} ({pass_percentage:.1f}%)"
+        ],
+        [
+            "NEEDS IMPROVEMENT",
+            f"{needs_count} "
+            f"({needs_percentage:.1f}%)"
+        ],
+        [
+            "FAIL",
+            f"{fail_count} ({fail_percentage:.1f}%)"
+        ],
+        [
+            "ERROR",
+            str(error_count)
+        ],
+    ]
+
+    summary_table = Table(
+        summary_data,
+        colWidths=[280, 170]
     )
 
-    st.markdown(
-        """
-        <div class="sidebar-footer">
-            Automated LLM Evaluation and<br>
-            Hallucination Detection System<br><br>
-            FastAPI + Streamlit + ChromaDB
-        </div>
-        """,
-        unsafe_allow_html=True,
+    summary_table.setStyle(
+        TableStyle([
+            (
+                "BACKGROUND",
+                (0, 0),
+                (-1, 0),
+                colors.HexColor("#222222")
+            ),
+            (
+                "TEXTCOLOR",
+                (0, 0),
+                (-1, 0),
+                colors.white
+            ),
+            (
+                "FONTNAME",
+                (0, 0),
+                (-1, 0),
+                "Helvetica-Bold"
+            ),
+            (
+                "FONTNAME",
+                (0, 1),
+                (-1, -1),
+                "Helvetica"
+            ),
+            (
+                "GRID",
+                (0, 0),
+                (-1, -1),
+                0.5,
+                colors.grey
+            ),
+            (
+                "FONTSIZE",
+                (0, 0),
+                (-1, -1),
+                9
+            ),
+            (
+                "VALIGN",
+                (0, 0),
+                (-1, -1),
+                "MIDDLE"
+            ),
+            (
+                "LEFTPADDING",
+                (0, 0),
+                (-1, -1),
+                7
+            ),
+            (
+                "RIGHTPADDING",
+                (0, 0),
+                (-1, -1),
+                7
+            ),
+            (
+                "TOPPADDING",
+                (0, 0),
+                (-1, -1),
+                6
+            ),
+            (
+                "BOTTOMPADDING",
+                (0, 0),
+                (-1, -1),
+                6
+            ),
+        ])
     )
+
+    story.append(summary_table)
+
+    story.append(
+        Spacer(1, 12)
+    )
+
+    # ========================================================
+    # 2. AVERAGE DIMENSION SCORES
+    # ========================================================
+
+    story.append(
+        Paragraph(
+            "2. Average Evaluation Scores",
+            heading_style
+        )
+    )
+
+    score_data = [
+        [
+            "Evaluation Dimension",
+            "Average Score"
+        ],
+        [
+            "Relevance",
+            pdf_score(avg_relevance)
+        ],
+        [
+            "Factuality",
+            pdf_score(avg_factuality)
+        ],
+        [
+            "Faithfulness",
+            pdf_score(avg_faithfulness)
+        ],
+        [
+            "Completeness",
+            pdf_score(avg_completeness)
+        ],
+        [
+            "Semantic Similarity",
+            pdf_score(avg_semantic_similarity)
+        ],
+        [
+            "Overall Score",
+            pdf_score(avg_overall_score)
+        ],
+        [
+            "Weighted Score",
+            pdf_score(avg_weighted_score)
+        ],
+    ]
+
+    score_table = Table(
+        score_data,
+        colWidths=[280, 170]
+    )
+
+    score_table.setStyle(
+        TableStyle([
+            (
+                "BACKGROUND",
+                (0, 0),
+                (-1, 0),
+                colors.HexColor("#222222")
+            ),
+            (
+                "TEXTCOLOR",
+                (0, 0),
+                (-1, 0),
+                colors.white
+            ),
+            (
+                "FONTNAME",
+                (0, 0),
+                (-1, 0),
+                "Helvetica-Bold"
+            ),
+            (
+                "GRID",
+                (0, 0),
+                (-1, -1),
+                0.5,
+                colors.grey
+            ),
+            (
+                "FONTSIZE",
+                (0, 0),
+                (-1, -1),
+                9
+            ),
+            (
+                "VALIGN",
+                (0, 0),
+                (-1, -1),
+                "MIDDLE"
+            ),
+            (
+                "LEFTPADDING",
+                (0, 0),
+                (-1, -1),
+                7
+            ),
+            (
+                "RIGHTPADDING",
+                (0, 0),
+                (-1, -1),
+                7
+            ),
+            (
+                "TOPPADDING",
+                (0, 0),
+                (-1, -1),
+                6
+            ),
+            (
+                "BOTTOMPADDING",
+                (0, 0),
+                (-1, -1),
+                6
+            ),
+        ])
+    )
+
+    story.append(score_table)
+
+    story.append(
+        Spacer(1, 12)
+    )
+
+    # ========================================================
+    # 3. HALLUCINATION ANALYSIS
+    # ========================================================
+
+    story.append(
+        Paragraph(
+            "3. Hallucination Analysis",
+            heading_style
+        )
+    )
+
+    hallucination_data = [
+        ["Metric", "Count"],
+        [
+            "Responses with Hallucinations",
+            str(hallucination_count)
+        ],
+        [
+            "Responses without Hallucinations",
+            str(not_detected_count)
+        ],
+        [
+            "Uncertain Hallucination Status",
+            str(uncertain_hallucination_count)
+        ],
+        [
+            "Unsupported Claims",
+            str(unsupported_claim_count)
+        ],
+    ]
+
+    hallucination_table = Table(
+        hallucination_data,
+        colWidths=[300, 150]
+    )
+
+    hallucination_table.setStyle(
+        TableStyle([
+            (
+                "BACKGROUND",
+                (0, 0),
+                (-1, 0),
+                colors.HexColor("#222222")
+            ),
+            (
+                "TEXTCOLOR",
+                (0, 0),
+                (-1, 0),
+                colors.white
+            ),
+            (
+                "FONTNAME",
+                (0, 0),
+                (-1, 0),
+                "Helvetica-Bold"
+            ),
+            (
+                "GRID",
+                (0, 0),
+                (-1, -1),
+                0.5,
+                colors.grey
+            ),
+            (
+                "FONTSIZE",
+                (0, 0),
+                (-1, -1),
+                9
+            ),
+            (
+                "VALIGN",
+                (0, 0),
+                (-1, -1),
+                "MIDDLE"
+            ),
+            (
+                "LEFTPADDING",
+                (0, 0),
+                (-1, -1),
+                7
+            ),
+            (
+                "RIGHTPADDING",
+                (0, 0),
+                (-1, -1),
+                7
+            ),
+            (
+                "TOPPADDING",
+                (0, 0),
+                (-1, -1),
+                6
+            ),
+            (
+                "BOTTOMPADDING",
+                (0, 0),
+                (-1, -1),
+                6
+            ),
+        ])
+    )
+
+    story.append(
+        hallucination_table
+    )
+
+    story.append(
+        Spacer(1, 12)
+    )
+
+    # ========================================================
+    # 4. COMPLETENESS ANALYSIS
+    # ========================================================
+
+    story.append(
+        Paragraph(
+            "4. Completeness Analysis",
+            heading_style
+        )
+    )
+
+    completeness_data = [
+        ["Metric", "Count"],
+        [
+            "Missing Aspects",
+            str(missing_aspects_count)
+        ],
+        [
+            "Partial Aspects",
+            str(partial_aspects_count)
+        ],
+    ]
+
+    completeness_table = Table(
+        completeness_data,
+        colWidths=[300, 150]
+    )
+
+    completeness_table.setStyle(
+        TableStyle([
+            (
+                "BACKGROUND",
+                (0, 0),
+                (-1, 0),
+                colors.HexColor("#222222")
+            ),
+            (
+                "TEXTCOLOR",
+                (0, 0),
+                (-1, 0),
+                colors.white
+            ),
+            (
+                "FONTNAME",
+                (0, 0),
+                (-1, 0),
+                "Helvetica-Bold"
+            ),
+            (
+                "GRID",
+                (0, 0),
+                (-1, -1),
+                0.5,
+                colors.grey
+            ),
+            (
+                "FONTSIZE",
+                (0, 0),
+                (-1, -1),
+                9
+            ),
+            (
+                "VALIGN",
+                (0, 0),
+                (-1, -1),
+                "MIDDLE"
+            ),
+            (
+                "LEFTPADDING",
+                (0, 0),
+                (-1, -1),
+                7
+            ),
+            (
+                "RIGHTPADDING",
+                (0, 0),
+                (-1, -1),
+                7
+            ),
+            (
+                "TOPPADDING",
+                (0, 0),
+                (-1, -1),
+                6
+            ),
+            (
+                "BOTTOMPADDING",
+                (0, 0),
+                (-1, -1),
+                6
+            ),
+        ])
+    )
+
+    story.append(
+        completeness_table
+    )
+
+    story.append(
+        Spacer(1, 12)
+    )
+
+    # ========================================================
+    # 5. RECOMMENDATIONS
+    # ========================================================
+
+    story.append(
+        Paragraph(
+            "5. Recommendations",
+            heading_style
+        )
+    )
+
+    recommendations = []
+
+    if fail_count > 0:
+
+        recommendations.append(
+            f"- Review {fail_count} failed response(s) "
+            "for factuality, relevance, completeness "
+            "and hallucination-related issues."
+        )
+
+    if needs_count > 0:
+
+        recommendations.append(
+            f"- Improve {needs_count} response(s) marked "
+            "NEEDS IMPROVEMENT."
+        )
+
+    if hallucination_count > 0:
+
+        recommendations.append(
+            "- Verify responses containing detected "
+            "hallucinations against reliable evidence."
+        )
+
+    if uncertain_hallucination_count > 0:
+
+        recommendations.append(
+            "- Provide reference answers or knowledge-base "
+            "evidence to reduce uncertain hallucination "
+            "assessments."
+        )
+
+    if missing_aspects_count > 0:
+
+        recommendations.append(
+            "- Review missing information identified by "
+            "the completeness evaluator."
+        )
+
+    if partial_aspects_count > 0:
+
+        recommendations.append(
+            "- Improve partially addressed aspects to "
+            "increase response completeness."
+        )
+
+    if not recommendations:
+
+        recommendations.append(
+            "- Batch responses show no major issues "
+            "according to the available evaluation results."
+        )
+
+    for recommendation in recommendations:
+
+        story.append(
+            Paragraph(
+                pdf_escape(recommendation),
+                normal_style
+            )
+        )
+
+    story.append(
+        PageBreak()
+    )
+
+    # ========================================================
+    # 6. DETAILED INDIVIDUAL RESULTS
+    # ========================================================
+
+    story.append(
+        Paragraph(
+            "6. Detailed Individual Evaluation Results",
+            heading_style
+        )
+    )
+
+    for position, (_, row) in enumerate(
+        df.iterrows()
+    ):
+
+        record_number = row.get(
+            "Record",
+            position + 1
+        )
+
+        question = row.get(
+            "Question",
+            ""
+        )
+
+        response = row.get(
+            "AI Response",
+            ""
+        )
+
+        reference = row.get(
+            "Reference",
+            row.get(
+                "Reference Answer",
+                ""
+            )
+        )
+
+        relevance = row.get(
+            "Relevance",
+            ""
+        )
+
+        factuality = row.get(
+            "Factuality",
+            ""
+        )
+
+        faithfulness = row.get(
+            "Faithfulness",
+            ""
+        )
+
+        completeness = row.get(
+            "Completeness",
+            ""
+        )
+
+        semantic_similarity = row.get(
+            "Semantic Similarity",
+            ""
+        )
+
+        overall_score = row.get(
+            "Overall Score",
+            ""
+        )
+
+        weighted_score = row.get(
+            "Weighted Score",
+            ""
+        )
+
+        hallucination = row.get(
+            "Hallucination",
+            ""
+        )
+
+        verdict = row.get(
+            "Verdict",
+            ""
+        )
+
+        error = row.get(
+            "Error",
+            ""
+        )
+
+        # ----------------------------------------------------
+        # RECORD
+        # ----------------------------------------------------
+
+        story.append(
+            Paragraph(
+                f"Record {pdf_escape(record_number)}",
+                subheading_style
+            )
+        )
+
+        # ----------------------------------------------------
+        # QUESTION
+        # ----------------------------------------------------
+
+        story.append(
+            Paragraph(
+                f"<b>Question:</b> "
+                f"{pdf_escape(question)}",
+                normal_style
+            )
+        )
+
+        # ----------------------------------------------------
+        # AI RESPONSE
+        # ----------------------------------------------------
+
+        story.append(
+            Paragraph(
+                f"<b>AI Response:</b> "
+                f"{pdf_escape(response)}",
+                normal_style
+            )
+        )
+
+        # ----------------------------------------------------
+        # REFERENCE ANSWER
+        # ----------------------------------------------------
+
+        if pdf_clean_text(reference):
+
+            story.append(
+                Paragraph(
+                    f"<b>Reference Answer:</b> "
+                    f"{pdf_escape(reference)}",
+                    normal_style
+                )
+            )
+
+        # ----------------------------------------------------
+        # ERROR
+        # ----------------------------------------------------
+
+        if pdf_clean_text(error):
+
+            story.append(
+                Paragraph(
+                    f"<b>Error:</b> "
+                    f"{pdf_escape(error)}",
+                    normal_style
+                )
+            )
+
+        # ----------------------------------------------------
+        # INDIVIDUAL SCORE TABLE
+        # ----------------------------------------------------
+
+        individual_score_data = [
+            [
+                "Dimension",
+                "Score"
+            ],
+            [
+                "Relevance",
+                pdf_score(relevance)
+            ],
+            [
+                "Factuality",
+                pdf_score(factuality)
+            ],
+            [
+                "Faithfulness",
+                pdf_score(faithfulness)
+            ],
+            [
+                "Completeness",
+                pdf_score(completeness)
+            ],
+            [
+                "Semantic Similarity",
+                pdf_score(semantic_similarity)
+            ],
+            [
+                "Overall Score",
+                pdf_score(overall_score)
+            ],
+            [
+                "Weighted Score",
+                pdf_score(weighted_score)
+            ],
+            [
+                "Hallucination",
+                pdf_clean_text(hallucination)
+                or "N/A"
+            ],
+            [
+                "Verdict",
+                pdf_clean_text(verdict)
+                or "N/A"
+            ],
+        ]
+
+        individual_table = Table(
+            individual_score_data,
+            colWidths=[280, 170]
+        )
+
+        individual_table.setStyle(
+            TableStyle([
+                (
+                    "BACKGROUND",
+                    (0, 0),
+                    (-1, 0),
+                    colors.HexColor("#222222")
+                ),
+                (
+                    "TEXTCOLOR",
+                    (0, 0),
+                    (-1, 0),
+                    colors.white
+                ),
+                (
+                    "FONTNAME",
+                    (0, 0),
+                    (-1, 0),
+                    "Helvetica-Bold"
+                ),
+                (
+                    "GRID",
+                    (0, 0),
+                    (-1, -1),
+                    0.5,
+                    colors.grey
+                ),
+                (
+                    "FONTSIZE",
+                    (0, 0),
+                    (-1, -1),
+                    8.5
+                ),
+                (
+                    "VALIGN",
+                    (0, 0),
+                    (-1, -1),
+                    "MIDDLE"
+                ),
+                (
+                    "LEFTPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    7
+                ),
+                (
+                    "RIGHTPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    7
+                ),
+                (
+                    "TOPPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    5
+                ),
+                (
+                    "BOTTOMPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    5
+                ),
+            ])
+        )
+
+        story.append(
+            individual_table
+        )
+
+        story.append(
+            Spacer(1, 8)
+        )
+
+        # ----------------------------------------------------
+        # FULL REPORT
+        # ----------------------------------------------------
+
+        full_report = row.get(
+            "Full Report",
+            None
+        )
+
+        if isinstance(
+            full_report,
+            dict
+        ):
+
+            # -----------------------------------------------
+            # Evaluation reasoning
+            # -----------------------------------------------
+
+            evaluation_reasoning = full_report.get(
+                "evaluation_reasoning",
+                {}
+            )
+
+            if isinstance(
+                evaluation_reasoning,
+                dict
+            ) and evaluation_reasoning:
+
+                story.append(
+                    Paragraph(
+                        "Evaluation Reasoning",
+                        subheading_style
+                    )
+                )
+
+                for key, value in evaluation_reasoning.items():
+
+                    story.append(
+                        Paragraph(
+                            f"<b>{pdf_escape(key)}:</b> "
+                            f"{pdf_escape(value)}",
+                            small_style
+                        )
+                    )
+
+            # -----------------------------------------------
+            # Hallucination details
+            # -----------------------------------------------
+
+            hallucination_data = full_report.get(
+                "hallucination",
+                {}
+            )
+
+            if isinstance(
+                hallucination_data,
+                dict
+            ):
+
+                story.append(
+                    Paragraph(
+                        "Hallucination Details",
+                        subheading_style
+                    )
+                )
+
+                hallucination_explanation = (
+                    hallucination_data.get(
+                        "explanation",
+                        ""
+                    )
+                )
+
+                if hallucination_explanation:
+
+                    story.append(
+                        Paragraph(
+                            f"<b>Explanation:</b> "
+                            f"{pdf_escape(hallucination_explanation)}",
+                            small_style
+                        )
+                    )
+
+                unsupported_claims = (
+                    hallucination_data.get(
+                        "unsupported_claims",
+                        []
+                    )
+                )
+
+                if isinstance(
+                    unsupported_claims,
+                    list
+                ) and unsupported_claims:
+
+                    story.append(
+                        Paragraph(
+                            "<b>Unsupported Claims:</b>",
+                            small_style
+                        )
+                    )
+
+                    for claim in unsupported_claims:
+
+                        story.append(
+                            Paragraph(
+                                f"- {pdf_escape(claim)}",
+                                small_style
+                            )
+                        )
+
+                contradicted_claims = (
+                    hallucination_data.get(
+                        "contradicted_claims",
+                        []
+                    )
+                )
+
+                if isinstance(
+                    contradicted_claims,
+                    list
+                ) and contradicted_claims:
+
+                    story.append(
+                        Paragraph(
+                            "<b>Contradicted Claims:</b>",
+                            small_style
+                        )
+                    )
+
+                    for claim in contradicted_claims:
+
+                        story.append(
+                            Paragraph(
+                                f"- {pdf_escape(claim)}",
+                                small_style
+                            )
+                        )
+
+            # -----------------------------------------------
+            # Completeness details
+            # -----------------------------------------------
+
+            completeness_data = full_report.get(
+                "completeness",
+                {}
+            )
+
+            if isinstance(
+                completeness_data,
+                dict
+            ):
+
+                details = completeness_data.get(
+                    "details",
+                    {}
+                )
+
+                story.append(
+                    Paragraph(
+                        "Completeness Details",
+                        subheading_style
+                    )
+                )
+
+                if isinstance(
+                    details,
+                    dict
+                ):
+
+                    addressed_aspects = details.get(
+                        "addressed_aspects",
+                        []
+                    )
+
+                    partial_aspects = details.get(
+                        "partial_aspects",
+                        []
+                    )
+
+                    missing_aspects = details.get(
+                        "missing_aspects",
+                        []
+                    )
+
+                    reasoning = details.get(
+                        "reasoning",
+                        ""
+                    )
+
+                    if addressed_aspects:
+
+                        story.append(
+                            Paragraph(
+                                "<b>Addressed Aspects:</b> "
+                                + pdf_escape(
+                                    addressed_aspects
+                                ),
+                                small_style
+                            )
+                        )
+
+                    if partial_aspects:
+
+                        story.append(
+                            Paragraph(
+                                "<b>Partial Aspects:</b> "
+                                + pdf_escape(
+                                    partial_aspects
+                                ),
+                                small_style
+                            )
+                        )
+
+                    if missing_aspects:
+
+                        story.append(
+                            Paragraph(
+                                "<b>Missing Aspects:</b> "
+                                + pdf_escape(
+                                    missing_aspects
+                                ),
+                                small_style
+                            )
+                        )
+
+                    if reasoning:
+
+                        story.append(
+                            Paragraph(
+                                "<b>Completeness Reasoning:</b> "
+                                + pdf_escape(
+                                    reasoning
+                                ),
+                                small_style
+                            )
+                        )
+
+            # -----------------------------------------------
+            # Final verdict reasoning
+            # -----------------------------------------------
+
+            verdict_reasoning = full_report.get(
+                "verdict_consolidated_reasoning",
+                full_report.get(
+                    "final_assessment",
+                    ""
+                )
+            )
+
+            if verdict_reasoning:
+
+                story.append(
+                    Paragraph(
+                        "Final Verdict Reasoning",
+                        subheading_style
+                    )
+                )
+
+                story.append(
+                    Paragraph(
+                        pdf_escape(
+                            verdict_reasoning
+                        ),
+                        small_style
+                    )
+                )
+
+            # -----------------------------------------------
+            # Retrieved context / evidence
+            # -----------------------------------------------
+
+            retrieved_context = full_report.get(
+                "retrieved_context",
+                []
+            )
+
+            if isinstance(
+                retrieved_context,
+                list
+            ) and retrieved_context:
+
+                story.append(
+                    Paragraph(
+                        "Retrieved Evidence / Context",
+                        subheading_style
+                    )
+                )
+
+                for context_item in retrieved_context:
+
+                    story.append(
+                        Paragraph(
+                            pdf_escape(
+                                context_item
+                            ),
+                            small_style
+                        )
+                    )
+
+        # ----------------------------------------------------
+        # FULL REPORT FALLBACK
+        # ----------------------------------------------------
+
+        elif pdf_clean_text(full_report):
+
+            story.append(
+                Paragraph(
+                    "Evaluation Report",
+                    subheading_style
+                )
+            )
+
+            story.append(
+                Paragraph(
+                    pdf_escape(full_report),
+                    small_style
+                )
+            )
+
+        story.append(
+            Spacer(1, 15)
+        )
+
+        # ----------------------------------------------------
+        # PAGE BREAK
+        # ----------------------------------------------------
+
+        if position < len(df) - 1:
+
+            story.append(
+                PageBreak()
+            )
+
+    # ========================================================
+    # BUILD PDF
+    # ========================================================
+
+    document.build(
+        story
+    )
+
+    buffer.seek(0)
+
+    return buffer.getvalue()
+
+
+# ============================================================
+# SIDEBAR NAVIGATION
+# ============================================================
+
+st.sidebar.title(
+    "🤖 LLM Evaluation"
+)
+
+page = st.sidebar.radio(
+    "Navigation",
+    [
+        "🏠 Dashboard",
+        "🔍 Single Evaluation",
+        "📊 Batch Evaluation",
+        "📋 Results",
+        "ℹ️ About",
+    ],
+)
 
 
 # ============================================================
@@ -311,92 +1843,978 @@ with st.sidebar:
 if page == "🏠 Dashboard":
 
     st.markdown(
-        """
-        <div class="hero-title">
-            Automated LLM Evaluation and<br>
-            Hallucination Detection System
-        </div>
-        """,
-        unsafe_allow_html=True,
+        '<div class="main-title">'
+        '🤖 LLM Evaluation Dashboard'
+        '</div>',
+        unsafe_allow_html=True
     )
 
     st.markdown(
-        """
-        <div class="hero-subtitle">
-            An intelligent quality-checking platform for
-            evaluating AI-generated responses.
-        </div>
-        """,
-        unsafe_allow_html=True,
+        '<div class="sub-title">'
+        "Automated evaluation, scoring and "
+        "hallucination detection"
+        "</div>",
+        unsafe_allow_html=True
     )
 
-    st.divider()
+    if st.session_state.batch_results is None:
 
-    st.subheader("Evaluation Platform")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        st.markdown(
-            """
-            <div class="feature-card">
-                <div class="feature-icon">🔍</div>
-                <div class="feature-title">
-                    Single Evaluation
-                </div>
-                <div class="feature-text">
-                    Evaluate one AI-generated response using
-                    six evaluation dimensions and receive
-                    detailed evidence, reasoning and a final verdict.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        st.info(
+            "No batch evaluation results available. "
+            "Run a Batch Evaluation first."
         )
 
-    with col2:
+        st.markdown("---")
 
         st.markdown(
-            """
-            <div class="feature-card">
-                <div class="feature-icon">📊</div>
-                <div class="feature-title">
-                    Batch Evaluation
-                </div>
-                <div class="feature-text">
-                    Upload a CSV containing multiple questions
-                    and AI responses. Evaluate all records
-                    automatically and download the results.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+            "## 📊 Dashboard Metrics"
         )
 
-    st.subheader("Evaluation Dimensions")
+        c1, c2, c3, c4 = st.columns(4)
 
-    c1, c2, c3 = st.columns(3)
+        c1.metric(
+            "Total Responses",
+            "0"
+        )
 
-    with c1:
-        st.metric("01", "Relevance")
+        c2.metric(
+            "PASS",
+            "0"
+        )
 
-    with c2:
-        st.metric("02", "Factuality")
+        c3.metric(
+            "Needs Improvement",
+            "0"
+        )
 
-    with c3:
-        st.metric("03", "Faithfulness")
+        c4.metric(
+            "FAIL",
+            "0"
+        )
 
-    c4, c5, c6 = st.columns(3)
+    else:
 
-    with c4:
-        st.metric("04", "Completeness")
+        df = (
+            st.session_state
+            .batch_results
+            .copy()
+        )
 
-    with c5:
-        st.metric("05", "Semantic Similarity")
+        if df.empty:
 
-    with c6:
-        st.metric("06", "Hallucination")
+            st.warning(
+                "Batch results are empty."
+            )
+
+        else:
+
+            # ====================================================
+            # CLEAN DATA
+            # ====================================================
+
+            if "Verdict" in df.columns:
+
+                df["Verdict"] = (
+                    df["Verdict"]
+                    .apply(clean_verdict)
+                )
+
+            numeric_columns = [
+                "Relevance",
+                "Factuality",
+                "Faithfulness",
+                "Completeness",
+                "Semantic Similarity",
+                "Overall Score",
+                "Weighted Score",
+            ]
+
+            for column in numeric_columns:
+
+                if column in df.columns:
+
+                    df[column] = pd.to_numeric(
+                        df[column],
+                        errors="coerce"
+                    )
+
+            # ====================================================
+            # FILTERS
+            # ====================================================
+
+            st.sidebar.markdown("---")
+
+            st.sidebar.subheader(
+                "🔎 Dashboard Filters"
+            )
+
+            if "Verdict" in df.columns:
+
+                available_verdicts = sorted(
+                    df["Verdict"]
+                    .dropna()
+                    .unique()
+                    .tolist()
+                )
+
+                selected_verdicts = (
+                    st.sidebar.multiselect(
+                        "Filter by Verdict",
+                        available_verdicts,
+                        default=available_verdicts,
+                    )
+                )
+
+            else:
+
+                selected_verdicts = []
+
+            filtered_df = df.copy()
+
+            if (
+                selected_verdicts
+                and "Verdict"
+                in filtered_df.columns
+            ):
+
+                filtered_df = filtered_df[
+                    filtered_df[
+                        "Verdict"
+                    ].isin(
+                        selected_verdicts
+                    )
+                ]
+
+            # ====================================================
+            # SCORE FILTER
+            # ====================================================
+
+            score_column = None
+
+            if "Weighted Score" in filtered_df.columns:
+
+                score_column = (
+                    "Weighted Score"
+                )
+
+            elif "Overall Score" in filtered_df.columns:
+
+                score_column = (
+                    "Overall Score"
+                )
+
+            if score_column:
+
+                score_values = pd.to_numeric(
+                    filtered_df[
+                        score_column
+                    ],
+                    errors="coerce"
+                ).dropna()
+
+                if not score_values.empty:
+
+                    min_score = float(
+                        score_values.min()
+                    )
+
+                    max_score = float(
+                        score_values.max()
+                    )
+
+                    if min_score == max_score:
+
+                        max_score = (
+                            min_score + 0.01
+                        )
+
+                    selected_range = (
+                        st.sidebar.slider(
+                            "Score Range",
+                            min_value=0.0,
+                            max_value=10.0,
+                            value=(
+                                max(
+                                    0.0,
+                                    min_score
+                                ),
+                                min(
+                                    10.0,
+                                    max_score
+                                )
+                            ),
+                        )
+                    )
+
+                    filtered_df = filtered_df[
+                        (
+                            pd.to_numeric(
+                                filtered_df[
+                                    score_column
+                                ],
+                                errors="coerce"
+                            )
+                            >= selected_range[0]
+                        )
+                        &
+                        (
+                            pd.to_numeric(
+                                filtered_df[
+                                    score_column
+                                ],
+                                errors="coerce"
+                            )
+                            <= selected_range[1]
+                        )
+                    ]
+
+            # ====================================================
+            # OVERALL STATISTICS
+            # ====================================================
+
+            st.markdown(
+                "## 📈 Overall Statistics"
+            )
+
+            total_responses = len(
+                filtered_df
+            )
+
+            pass_count = 0
+            improvement_count = 0
+            fail_count = 0
+
+            if "Verdict" in filtered_df.columns:
+
+                pass_count = len(
+                    filtered_df[
+                        filtered_df[
+                            "Verdict"
+                        ] == "PASS"
+                    ]
+                )
+
+                improvement_count = len(
+                    filtered_df[
+                        filtered_df[
+                            "Verdict"
+                        ]
+                        == "NEEDS IMPROVEMENT"
+                    ]
+                )
+
+                fail_count = len(
+                    filtered_df[
+                        filtered_df[
+                            "Verdict"
+                        ] == "FAIL"
+                    ]
+                )
+
+            pass_percentage = (
+                pass_count
+                / total_responses
+                * 100
+                if total_responses
+                else 0
+            )
+
+            improvement_percentage = (
+                improvement_count
+                / total_responses
+                * 100
+                if total_responses
+                else 0
+            )
+
+            fail_percentage = (
+                fail_count
+                / total_responses
+                * 100
+                if total_responses
+                else 0
+            )
+
+            c1, c2, c3, c4 = (
+                st.columns(4)
+            )
+
+            c1.metric(
+                "Total Responses",
+                total_responses
+            )
+
+            c2.metric(
+                "PASS",
+                f"{pass_count} "
+                f"({pass_percentage:.1f}%)"
+            )
+
+            c3.metric(
+                "Needs Improvement",
+                f"{improvement_count} "
+                f"({improvement_percentage:.1f}%)"
+            )
+
+            c4.metric(
+                "FAIL",
+                f"{fail_count} "
+                f"({fail_percentage:.1f}%)"
+            )
+
+            # ====================================================
+            # AVERAGE DIMENSIONS
+            # ====================================================
+
+            st.markdown("---")
+
+            st.markdown(
+                "## 🎯 Average Dimension Scores"
+            )
+
+            dimensions = [
+                "Relevance",
+                "Factuality",
+                "Faithfulness",
+                "Completeness",
+                "Semantic Similarity",
+            ]
+
+            dimension_values = {}
+
+            for dimension in dimensions:
+
+                dimension_values[
+                    dimension
+                ] = safe_average(
+                    filtered_df,
+                    dimension
+                )
+
+            cols = st.columns(
+                len(dimensions)
+            )
+
+            for i, dimension in enumerate(
+                dimensions
+            ):
+
+                cols[i].metric(
+                    dimension,
+                    format_score(
+                        dimension_values[
+                            dimension
+                        ]
+                    )
+                )
+
+            # ====================================================
+            # OVERALL SCORES
+            # ====================================================
+
+            st.markdown("---")
+
+            c1, c2 = st.columns(2)
+
+            c1.metric(
+                "Average Weighted Score",
+                format_score(
+                    safe_average(
+                        filtered_df,
+                        "Weighted Score"
+                    )
+                )
+            )
+
+            c2.metric(
+                "Average Overall Score",
+                format_score(
+                    safe_average(
+                        filtered_df,
+                        "Overall Score"
+                    )
+                )
+            )
+
+            # ====================================================
+            # HALLUCINATION ANALYSIS
+            # ====================================================
+
+            st.markdown("---")
+
+            st.markdown(
+                "## 🚨 Hallucination Analysis"
+            )
+
+            hallucination_count = 0
+            uncertain_count = 0
+            unsupported_claim_count = 0
+
+            for _, row in filtered_df.iterrows():
+
+                status = str(
+                    row.get(
+                        "Hallucination",
+                        ""
+                    )
+                ).lower()
+
+                if status == "detected":
+
+                    hallucination_count += 1
+
+                elif status == "uncertain":
+
+                    uncertain_count += 1
+
+                report = row.get(
+                    "Full Report",
+                    {}
+                )
+
+                if isinstance(
+                    report,
+                    dict
+                ):
+
+                    hallucination_data = (
+                        report.get(
+                            "hallucination",
+                            {}
+                        )
+                    )
+
+                    if isinstance(
+                        hallucination_data,
+                        dict
+                    ):
+
+                        claims = (
+                            hallucination_data.get(
+                                "unsupported_claims",
+                                []
+                            )
+                        )
+
+                        if isinstance(
+                            claims,
+                            list
+                        ):
+
+                            unsupported_claim_count += (
+                                len(claims)
+                            )
+
+            hc1, hc2, hc3 = (
+                st.columns(3)
+            )
+
+            hc1.metric(
+                "Responses with Hallucinations",
+                hallucination_count
+            )
+
+            hc2.metric(
+                "Uncertain Hallucination Status",
+                uncertain_count
+            )
+
+            hc3.metric(
+                "Unsupported Claims",
+                unsupported_claim_count
+            )
+
+            # ====================================================
+            # COMPLETENESS
+            # ====================================================
+
+            st.markdown("---")
+
+            st.markdown(
+                "## 🧩 Completeness Analysis"
+            )
+
+            missing_count = 0
+            partial_count = 0
+
+            for _, row in filtered_df.iterrows():
+
+                report = row.get(
+                    "Full Report",
+                    {}
+                )
+
+                if isinstance(
+                    report,
+                    dict
+                ):
+
+                    completeness_data = (
+                        report.get(
+                            "completeness",
+                            {}
+                        )
+                    )
+
+                    if isinstance(
+                        completeness_data,
+                        dict
+                    ):
+
+                        details = (
+                            completeness_data.get(
+                                "details",
+                                {}
+                            )
+                        )
+
+                        if isinstance(
+                            details,
+                            dict
+                        ):
+
+                            missing = (
+                                details.get(
+                                    "missing_aspects",
+                                    []
+                                )
+                            )
+
+                            partial = (
+                                details.get(
+                                    "partial_aspects",
+                                    []
+                                )
+                            )
+
+                            if isinstance(
+                                missing,
+                                list
+                            ):
+
+                                missing_count += (
+                                    len(missing)
+                                )
+
+                            if isinstance(
+                                partial,
+                                list
+                            ):
+
+                                partial_count += (
+                                    len(partial)
+                                )
+
+            cc1, cc2 = st.columns(2)
+
+            cc1.metric(
+                "Missing / Incomplete Aspects",
+                missing_count
+            )
+
+            cc2.metric(
+                "Partial Aspects",
+                partial_count
+            )
+
+            # ====================================================
+            # FREQUENT ISSUES
+            # ====================================================
+
+            st.markdown("---")
+
+            st.markdown(
+                "## 🚨 Most Frequent Evaluation Issues"
+            )
+
+            issue_counts = {
+                "Low Factuality": 0,
+                "Low Relevance": 0,
+                "Incomplete Response": 0,
+                "Hallucination Detected": 0,
+            }
+
+            for _, row in filtered_df.iterrows():
+
+                try:
+
+                    factuality = float(
+                        row.get(
+                            "Factuality"
+                        )
+                    )
+
+                    if factuality < 7:
+
+                        issue_counts[
+                            "Low Factuality"
+                        ] += 1
+
+                except Exception:
+                    pass
+
+                try:
+
+                    relevance = float(
+                        row.get(
+                            "Relevance"
+                        )
+                    )
+
+                    if relevance < 7:
+
+                        issue_counts[
+                            "Low Relevance"
+                        ] += 1
+
+                except Exception:
+                    pass
+
+                try:
+
+                    completeness = float(
+                        row.get(
+                            "Completeness"
+                        )
+                    )
+
+                    if completeness < 7:
+
+                        issue_counts[
+                            "Incomplete Response"
+                        ] += 1
+
+                except Exception:
+                    pass
+
+                if str(
+                    row.get(
+                        "Hallucination",
+                        ""
+                    )
+                ).lower() == "detected":
+
+                    issue_counts[
+                        "Hallucination Detected"
+                    ] += 1
+
+            issue_df = pd.DataFrame(
+                {
+                    "Issue": list(
+                        issue_counts.keys()
+                    ),
+                    "Count": list(
+                        issue_counts.values()
+                    ),
+                }
+            )
+
+            st.dataframe(
+                issue_df,
+                width="stretch",
+                hide_index=True,
+            )
+
+            st.bar_chart(
+                issue_df,
+                x="Issue",
+                y="Count",
+            )
+
+            # ====================================================
+            # SCORE DISTRIBUTION
+            # ====================================================
+
+            st.markdown("---")
+
+            st.markdown(
+                "## 📊 Score Distribution"
+            )
+
+            available_dimensions = [
+                column
+                for column in dimensions
+                if column in filtered_df.columns
+            ]
+
+            if available_dimensions:
+
+                distribution_df = (
+                    filtered_df[
+                        available_dimensions
+                    ].copy()
+                )
+
+                st.bar_chart(
+                    distribution_df
+                )
+
+            # ====================================================
+            # VERDICT DISTRIBUTION
+            # ====================================================
+
+            st.markdown("---")
+
+            st.markdown(
+                "## 📌 Verdict Distribution"
+            )
+
+            if "Verdict" in filtered_df.columns:
+
+                verdict_counts = (
+                    filtered_df[
+                        "Verdict"
+                    ]
+                    .value_counts()
+                    .rename_axis(
+                        "Verdict"
+                    )
+                    .reset_index(
+                        name="Count"
+                    )
+                )
+
+                st.bar_chart(
+                    verdict_counts,
+                    x="Verdict",
+                    y="Count",
+                )
+
+            # ====================================================
+            # INDIVIDUAL RESULTS
+            # ====================================================
+
+            st.markdown("---")
+
+            st.markdown(
+                "## 📋 Individual Evaluation Results"
+            )
+
+            display_columns = [
+                "Record",
+                "Question",
+                "Relevance",
+                "Factuality",
+                "Faithfulness",
+                "Completeness",
+                "Semantic Similarity",
+                "Overall Score",
+                "Weighted Score",
+                "Hallucination",
+                "Verdict",
+            ]
+
+            available_display_columns = [
+                column
+                for column in display_columns
+                if column in filtered_df.columns
+            ]
+
+            st.dataframe(
+                filtered_df[
+                    available_display_columns
+                ],
+                width="stretch",
+                hide_index=True,
+            )
+
+            # ====================================================
+            # DRILL DOWN
+            # ====================================================
+
+            st.markdown("---")
+
+            st.markdown(
+                "## 🔍 Drill Down into Individual Result"
+            )
+
+            if (
+                "Record" in filtered_df.columns
+                and not filtered_df.empty
+            ):
+
+                record_options = (
+                    filtered_df[
+                        "Record"
+                    ]
+                    .dropna()
+                    .tolist()
+                )
+
+                if record_options:
+
+                    selected_record = (
+                        st.selectbox(
+                            "Select Record",
+                            record_options,
+                        )
+                    )
+
+                    selected_rows = (
+                        filtered_df[
+                            filtered_df[
+                                "Record"
+                            ]
+                            == selected_record
+                        ]
+                    )
+
+                    if not selected_rows.empty:
+
+                        selected_row = (
+                            selected_rows.iloc[0]
+                        )
+
+                        st.markdown(
+                            "### Question"
+                        )
+
+                        st.write(
+                            selected_row.get(
+                                "Question",
+                                "N/A"
+                            )
+                        )
+
+                        st.markdown(
+                            "### AI Response"
+                        )
+
+                        st.write(
+                            selected_row.get(
+                                "AI Response",
+                                "N/A"
+                            )
+                        )
+
+                        d1, d2, d3, d4 = (
+                            st.columns(4)
+                        )
+
+                        d1.metric(
+                            "Relevance",
+                            format_score(
+                                selected_row.get(
+                                    "Relevance"
+                                )
+                            )
+                        )
+
+                        d2.metric(
+                            "Factuality",
+                            format_score(
+                                selected_row.get(
+                                    "Factuality"
+                                )
+                            )
+                        )
+
+                        d3.metric(
+                            "Completeness",
+                            format_score(
+                                selected_row.get(
+                                    "Completeness"
+                                )
+                            )
+                        )
+
+                        d4.metric(
+                            "Verdict",
+                            selected_row.get(
+                                "Verdict",
+                                "N/A"
+                            )
+                        )
+
+                        report = (
+                            selected_row.get(
+                                "Full Report",
+                                {}
+                            )
+                        )
+
+                        if isinstance(
+                            report,
+                            dict
+                        ):
+
+                            st.markdown(
+                                "### 🚨 Hallucination Details"
+                            )
+
+                            st.json(
+                                report.get(
+                                    "hallucination",
+                                    {}
+                                )
+                            )
+
+                            st.markdown(
+                                "### 🧩 Completeness Details"
+                            )
+
+                            st.json(
+                                report.get(
+                                    "completeness",
+                                    {}
+                                )
+                            )
+
+                            st.markdown(
+                                "### ⚖️ Final Verdict"
+                            )
+
+                            st.write(
+                                report.get(
+                                    "verdict_consolidated_reasoning",
+                                    report.get(
+                                        "final_assessment",
+                                        "N/A"
+                                    )
+                                )
+                            )
+
+                            with st.expander(
+                                "View Complete Evaluation Report"
+                            ):
+
+                                st.json(
+                                    report
+                                )
+
+            # ====================================================
+            # DOWNLOAD DASHBOARD DATA
+            # ====================================================
+
+            st.markdown("---")
+
+            st.markdown(
+                "## 📥 Download Dashboard Data"
+            )
+
+            download_df = (
+                filtered_df.copy()
+            )
+
+            if "Full Report" in download_df.columns:
+
+                download_df = download_df.drop(
+                    columns=[
+                        "Full Report"
+                    ]
+                )
+
+            st.download_button(
+                label="⬇️ Download Results CSV",
+                data=download_df.to_csv(
+                    index=False
+                ),
+                file_name=(
+                    "llm_evaluation_results.csv"
+                ),
+                mime="text/csv",
+                width="stretch",
+            )
 
 
 # ============================================================
@@ -405,844 +2823,242 @@ if page == "🏠 Dashboard":
 
 elif page == "🔍 Single Evaluation":
 
-    st.markdown(
-        '<div class="page-title">Single Evaluation</div>',
-        unsafe_allow_html=True,
+    st.title(
+        "🔍 Single Response Evaluation"
     )
-
-    st.markdown(
-        """
-        <div class="page-subtitle">
-            Evaluate one AI-generated response in detail.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.subheader("Evaluation Input")
 
     question = st.text_area(
         "Question",
-        placeholder="Enter the question...",
+        placeholder="Enter the question..."
     )
 
-    ai_response = st.text_area(
+    response = st.text_area(
         "AI Response",
-        placeholder="Enter the AI-generated response...",
+        placeholder=(
+            "Enter the AI-generated response..."
+        )
     )
 
     reference_answer = st.text_area(
-        "Reference Answer (optional)",
-        placeholder="Enter the expected answer...",
+        "Reference Answer (Optional)",
+        placeholder=(
+            "Enter reference answer if available..."
+        )
     )
 
     source_document = st.text_area(
-        "Source Document / Context (optional)",
-        placeholder="Enter supporting information...",
+        "Source / Evidence (Optional)",
+        placeholder=(
+            "Enter supporting evidence if available..."
+        )
     )
 
-    input_col1, input_col2 = st.columns(2)
+    use_kb = st.checkbox(
+        "Use Knowledge Base",
+        value=True
+    )
 
-    with input_col1:
-
-        use_knowledge_base = st.checkbox(
-            "Use Knowledge Base",
-            value=True,
-        )
-
-    with input_col2:
-
-        top_k = st.number_input(
-            "Retrieved Chunks",
-            min_value=1,
-            max_value=10,
-            value=1,
-            step=1,
-        )
+    top_k = st.number_input(
+        "Top K Retrieved Documents",
+        min_value=1,
+        max_value=10,
+        value=3
+    )
 
     if st.button(
         "🚀 Evaluate Response",
-        type="primary",
+        width="stretch"
     ):
 
         if not question.strip():
 
-            st.error("Please enter a question.")
+            st.error(
+                "Please enter a question."
+            )
 
-        elif not ai_response.strip():
+        elif not response.strip():
 
-            st.error("Please enter an AI response.")
+            st.error(
+                "Please enter an AI response."
+            )
 
         else:
-
             payload = {
-                "question": question,
-                "response": ai_response,
-                "reference_answer": (
-                    reference_answer
-                    if reference_answer.strip()
-                    else None
-                ),
-                "source_document": (
-                    source_document
-                    if source_document.strip()
-                    else None
-                ),
-                "use_knowledge_base": use_knowledge_base,
-                "top_k": int(top_k),
+              "question": question,
+              "response": response,
+              "reference_answer": reference_answer,
+              "source_document": source_document,
+              "use_knowledge_base": use_kb,
+              "top_k": int(top_k),
             }
+
 
             try:
 
-                result = requests.post(
-                    f"{BACKEND_URL}/evaluate",
-                    json=payload,
-                    timeout=180,
-                )
+                with st.spinner(
+                    "Running evaluation..."
+                ):
 
-                if result.status_code != 200:
-
-                    st.error(
-                        f"Backend error: {result.status_code}"
+                    api_response = requests.post(
+                        API_URL,
+                        json=payload,
+                        timeout=120,
                     )
 
-                    st.code(result.text)
+                if api_response.status_code == 200:
 
-                else:
+                    data = api_response.json()
 
-                    st.session_state.single_report = result.json()
+                    st.session_state.single_result = (
+                        data
+                    )
 
                     st.success(
                         "Evaluation completed successfully."
                     )
 
-            except requests.exceptions.RequestException as error:
+                    st.markdown(
+                        "## 🎯 Evaluation Scores"
+                    )
+
+                    s1, s2, s3, s4 = (
+                        st.columns(4)
+                    )
+
+                    s1.metric(
+                        "Relevance",
+                        format_score(
+                            normalize_score(
+                                data.get(
+                                    "relevance"
+                                )
+                            )
+                        )
+                    )
+
+                    s2.metric(
+                        "Factuality",
+                        format_score(
+                            normalize_score(
+                                data.get(
+                                    "factuality"
+                                )
+                            )
+                        )
+                    )
+
+                    s3.metric(
+                        "Completeness",
+                        format_score(
+                            normalize_score(
+                                data.get(
+                                    "completeness"
+                                )
+                            )
+                        )
+                    )
+
+                    s4.metric(
+                        "Overall Score",
+                        format_score(
+                            get_value(
+                                data,
+                                [
+                                    "verdict_overall_score",
+                                    "overall_score",
+                                ]
+                            )
+                        )
+                    )
+
+                    st.markdown("---")
+
+                    st.markdown(
+                        "## 🚨 Hallucination Detection"
+                    )
+
+                    st.json(
+                        data.get(
+                            "hallucination",
+                            {}
+                        )
+                    )
+
+                    st.markdown("---")
+
+                    st.markdown(
+                        "## 🧩 Completeness Evaluation"
+                    )
+
+                    st.json(
+                        data.get(
+                            "completeness",
+                            {}
+                        )
+                    )
+
+                    st.markdown("---")
+
+                    st.markdown(
+                        "## ⚖️ Final Verdict"
+                    )
+
+                    verdict = data.get(
+                        "verdict",
+                        "N/A"
+                    )
+
+                    st.subheader(
+                        clean_verdict(verdict)
+                    )
+
+                    st.write(
+                        data.get(
+                            "verdict_consolidated_reasoning",
+                            data.get(
+                                "final_assessment",
+                                "N/A"
+                            )
+                        )
+                    )
+
+                    with st.expander(
+                        "View Complete Evaluation Report"
+                    ):
+
+                        st.json(
+                            data
+                        )
+
+                else:
+
+                    st.error(
+                        f"API Error "
+                        f"{api_response.status_code}"
+                    )
+
+                    st.code(
+                        api_response.text
+                    )
+
+            except requests.exceptions.ConnectionError:
 
                 st.error(
-                    "Could not connect to the FastAPI backend."
+                    "FastAPI backend is not running. "
+                    "Start the backend on port 8001."
                 )
 
-                st.write(str(error))
-
-            except Exception as error:
+            except requests.exceptions.Timeout:
 
                 st.error(
-                    "An unexpected error occurred."
+                    "FastAPI request timed out."
                 )
 
-                st.exception(error)
+            except Exception as e:
 
-    # --------------------------------------------------------
-    # RESULTS
-    # --------------------------------------------------------
-
-    report = st.session_state.single_report
-
-    if report is not None:
-
-        st.divider()
-
-        st.header("Evaluation Results")
-
-        overall_score = report.get("overall_score")
-
-        verdict = report.get(
-            "verdict",
-            "NEEDS IMPROVEMENT",
-        )
-
-        verdict_score = report.get(
-            "verdict_overall_score"
-        )
-
-        hallucination_data = report.get(
-            "hallucination",
-            {},
-        )
-
-        detected = hallucination_data.get(
-            "hallucination_detected"
-        )
-
-        if detected is True:
-            hallucination_text = "YES"
-        elif detected is False:
-            hallucination_text = "NO"
-        else:
-            hallucination_text = "UNCERTAIN"
-
-        top1, top2, top3 = st.columns(3)
-
-        with top1:
-
-            st.metric(
-                "Overall Score",
-                (
-                    f"{overall_score:.2f} / 10"
-                    if overall_score is not None
-                    else "Unavailable"
-                ),
-            )
-
-        with top2:
-
-            st.metric(
-                "Weighted Score",
-                (
-                    f"{verdict_score:.2f} / 10"
-                    if verdict_score is not None
-                    else "Unavailable"
-                ),
-            )
-
-        with top3:
-
-            st.metric(
-                "Hallucination",
-                hallucination_text,
-            )
-
-        st.subheader("Evaluation Dimensions")
-
-        s1, s2, s3 = st.columns(3)
-
-        with s1:
-
-            score = report.get("relevance_score")
-
-            st.metric(
-                "Relevance",
-                f"{score:.2f}" if score is not None else "N/A",
-            )
-
-        with s2:
-
-            score = report.get("factuality_score")
-
-            st.metric(
-                "Factuality",
-                f"{score:.2f}" if score is not None else "N/A",
-            )
-
-        with s3:
-
-            score = report.get("faithfulness_score")
-
-            st.metric(
-                "Faithfulness",
-                f"{score:.2f}" if score is not None else "N/A",
-            )
-
-        s4, s5 = st.columns(2)
-
-        with s4:
-
-            score = report.get("completeness_score")
-
-            st.metric(
-                "Completeness",
-                f"{score:.2f}" if score is not None else "N/A",
-            )
-
-        with s5:
-
-            score = report.get(
-                "semantic_similarity_score"
-            )
-
-            st.metric(
-                "Semantic Similarity",
-                f"{score:.2f}" if score is not None else "N/A",
-            )
-
-        # ====================================================
-        # RELEVANCE
-        # ====================================================
-
-        relevance = report.get(
-            "relevance",
-            {},
-        )
-
-        st.markdown(
-            '<div class="judge-card">',
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            '<div class="judge-title">1. Relevance Judge</div>',
-            unsafe_allow_html=True,
-        )
-
-        relevance_score = relevance.get("score")
-
-        st.write(
-            f"**Score:** {relevance_score:.2f} / 10"
-            if relevance_score is not None
-            else "**Score:** Unavailable"
-        )
-
-        details = relevance.get("details", {})
-
-        if details.get("category"):
-
-            st.write(
-                f"**Category:** {details['category']}"
-            )
-
-        if details.get("reasoning"):
-
-            st.write(
-                f"**Reasoning:** {details['reasoning']}"
-            )
-
-        if relevance.get("explanation"):
-
-            st.write(
-                f"**Explanation:** "
-                f"{relevance['explanation']}"
-            )
-
-        st.markdown(
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-        # ====================================================
-        # FACTUALITY
-        # ====================================================
-
-        factuality = report.get(
-            "factuality",
-            {},
-        )
-
-        st.markdown(
-            '<div class="judge-card">',
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            '<div class="judge-title">'
-            '2. Accuracy / Factuality Judge'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
-        factuality_score = factuality.get("score")
-
-        st.write(
-            f"**Score:** {factuality_score:.2f} / 10"
-            if factuality_score is not None
-            else "**Score:** Unavailable"
-        )
-
-        details = factuality.get("details", {})
-
-        if details.get("category"):
-
-            st.write(
-                f"**Category:** {details['category']}"
-            )
-
-        evidence = details.get(
-            "supporting_evidence",
-            [],
-        )
-
-        if evidence:
-
-            st.write("**Supporting Evidence:**")
-
-            for item in evidence:
-
-                st.write(
-                    f"- {item}"
+                st.error(
+                    f"Unexpected error: {e}"
                 )
-
-        if factuality.get("explanation"):
-
-            st.write(
-                f"**Reasoning:** "
-                f"{factuality['explanation']}"
-            )
-
-        st.markdown(
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-        # ====================================================
-        # FAITHFULNESS
-        # ====================================================
-
-        faithfulness = report.get(
-            "faithfulness",
-            {},
-        )
-
-        st.markdown(
-            '<div class="judge-card">',
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            '<div class="judge-title">'
-            '3. Faithfulness Judge'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
-        faithfulness_score = faithfulness.get("score")
-
-        st.write(
-            f"**Score:** {faithfulness_score:.2f} / 10"
-            if faithfulness_score is not None
-            else "**Score:** Uncertain"
-        )
-
-        details = faithfulness.get("details", {})
-
-        supported = details.get(
-            "supported_claims",
-            [],
-        )
-
-        if supported:
-
-            st.write("**Supported Claims:**")
-
-            for claim in supported:
-
-                st.write(
-                    f"- {claim}"
-                )
-
-        unsupported = details.get(
-            "unsupported_claims",
-            [],
-        )
-
-        if unsupported:
-
-            st.write("**Unsupported Claims:**")
-
-            for claim in unsupported:
-
-                st.write(
-                    f"- {claim}"
-                )
-
-        if details.get("certainty"):
-
-            st.write(
-                f"**Certainty:** "
-                f"{details['certainty']}"
-            )
-
-        if faithfulness.get("explanation"):
-
-            st.write(
-                f"**Reasoning:** "
-                f"{faithfulness['explanation']}"
-            )
-
-        st.markdown(
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-        # ====================================================
-        # COMPLETENESS
-        # ====================================================
-
-        completeness = report.get(
-            "completeness",
-            {},
-        )
-
-        st.markdown(
-            '<div class="judge-card">',
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            '<div class="judge-title">'
-            '4. Completeness Judge'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
-        completeness_score = completeness.get("score")
-
-        st.write(
-            f"**Score:** {completeness_score:.2f} / 10"
-            if completeness_score is not None
-            else "**Score:** Unavailable"
-        )
-
-        details = completeness.get("details", {})
-
-        addressed = details.get(
-            "addressed_aspects",
-            [],
-        )
-
-        if addressed:
-
-            st.write("**Addressed Aspects:**")
-
-            for item in addressed:
-
-                st.write(
-                    f"- {item}"
-                )
-
-        partial = details.get(
-            "partial_aspects",
-            [],
-        )
-
-        if partial:
-
-            st.write(
-                "**Partially Addressed Aspects:**"
-            )
-
-            for item in partial:
-
-                st.write(
-                    f"- {item}"
-                )
-
-        missing = details.get(
-            "missing_aspects",
-            [],
-        )
-
-        if missing:
-
-            st.write("**Missing Aspects:**")
-
-            for item in missing:
-
-                st.write(
-                    f"- {item}"
-                )
-
-        if details.get("missing_information"):
-
-            st.write(
-                "**Missing Information:**"
-            )
-
-            for item in details[
-                "missing_information"
-            ]:
-
-                st.write(
-                    f"- {item}"
-                )
-
-        if details.get("target"):
-
-            st.write(
-                f"**Evaluation Target:** "
-                f"{details['target']}"
-            )
-
-        if details.get("reasoning"):
-
-            st.write(
-                f"**Reasoning:** "
-                f"{details['reasoning']}"
-            )
-
-        if completeness.get("explanation"):
-
-            st.write(
-                f"**Explanation:** "
-                f"{completeness['explanation']}"
-            )
-
-        st.markdown(
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-        # ====================================================
-        # SEMANTIC SIMILARITY
-        # ====================================================
-
-        semantic = report.get(
-            "semantic_similarity",
-            {},
-        )
-
-        st.markdown(
-            '<div class="judge-card">',
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            '<div class="judge-title">'
-            '5. Semantic Similarity Judge'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
-        semantic_score = semantic.get("score")
-
-        st.write(
-            f"**Score:** {semantic_score:.2f} / 10"
-            if semantic_score is not None
-            else "**Score:** Unavailable"
-        )
-
-        details = semantic.get(
-            "details",
-            {},
-        )
-
-        if details.get("similarity") is not None:
-
-            st.write(
-                f"**Similarity:** "
-                f"{details['similarity']}"
-            )
-
-        if details.get("model"):
-
-            st.write(
-                f"**Model:** "
-                f"{details['model']}"
-            )
-
-        if semantic.get("explanation"):
-
-            st.write(
-                f"**Reasoning:** "
-                f"{semantic['explanation']}"
-            )
-
-        st.markdown(
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-        # ====================================================
-        # HALLUCINATION
-        # ====================================================
-
-        hallucination = report.get(
-            "hallucination",
-            {},
-        )
-
-        st.markdown(
-            '<div class="judge-card">',
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            '<div class="judge-title">'
-            '6. Hallucination Detection Judge'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
-        detected = hallucination.get(
-            "hallucination_detected"
-        )
-
-        severity = hallucination.get(
-            "severity"
-        )
-
-        if detected is True:
-
-            st.error(
-                "Hallucination Detected: YES"
-            )
-
-        elif detected is False:
-
-            st.success(
-                "Hallucination Detected: NO"
-            )
-
-        else:
-
-            st.warning(
-                "Hallucination Detection: UNCERTAIN"
-            )
-
-        st.write(
-            f"**Severity:** "
-            f"{severity or 'Uncertain'}"
-        )
-
-        unsupported = hallucination.get(
-            "unsupported_claims",
-            [],
-        )
-
-        if unsupported:
-
-            st.write("**Unsupported Claims:**")
-
-            for claim in unsupported:
-
-                st.write(
-                    f"- {claim}"
-                )
-
-        contradicted = hallucination.get(
-            "contradicted_claims",
-            [],
-        )
-
-        if contradicted:
-
-            st.write("**Contradicted Claims:**")
-
-            for claim in contradicted:
-
-                st.write(
-                    f"- {claim}"
-                )
-
-        supported = hallucination.get(
-            "supported_claims",
-            [],
-        )
-
-        if supported:
-
-            st.write("**Supported Claims:**")
-
-            for claim in supported:
-
-                st.write(
-                    f"- {claim}"
-                )
-
-        st.write(
-            f"**Explanation:** "
-            f"{hallucination.get('explanation', 'Unavailable')}"
-        )
-
-        st.write(
-            f"**Certainty:** "
-            f"{hallucination.get('certainty', 'Unavailable')}"
-        )
-
-        st.markdown(
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-        # ====================================================
-        # FINAL VERDICT
-        # ====================================================
-
-        st.header("Final Verdict")
-
-        if verdict == "PASS":
-
-            st.success("✅ PASS")
-
-        elif verdict == "NEEDS IMPROVEMENT":
-
-            st.warning(
-                "⚠️ NEEDS IMPROVEMENT"
-            )
-
-        else:
-
-            st.error("❌ FAIL")
-
-        if verdict_score is not None:
-
-            st.metric(
-                "Weighted Overall Score",
-                f"{verdict_score:.2f} / 10",
-            )
-
-        # ====================================================
-        # MAJOR ISSUES
-        # ====================================================
-
-        major_issues = report.get(
-            "verdict_major_issues",
-            [],
-        )
-
-        if major_issues:
-
-            st.subheader("Major Issues")
-
-            for issue in major_issues:
-
-                st.write(
-                    f"- {issue}"
-                )
-
-        # ====================================================
-        # CONSOLIDATED SUMMARY
-        # ====================================================
-
-        st.subheader(
-            "Consolidated Evaluation Summary"
-        )
-
-        st.write(
-            report.get(
-                "verdict_consolidated_reasoning",
-                "No consolidated reasoning available.",
-            )
-        )
-
-        # ====================================================
-        # FINAL ASSESSMENT
-        # ====================================================
-
-        st.subheader(
-            "Final Assessment"
-        )
-
-        st.write(
-            report.get(
-                "final_assessment",
-                "No final assessment available.",
-            )
-        )
-
-        # ====================================================
-        # RETRIEVED EVIDENCE
-        # ====================================================
-
-        retrieved_context = report.get(
-            "retrieved_context",
-            [],
-        )
-
-        if retrieved_context:
-
-            st.header(
-                "Retrieved Evidence"
-            )
-
-            for index, context in enumerate(
-                retrieved_context,
-                start=1,
-            ):
-
-                with st.expander(
-                    f"Evidence {index}"
-                ):
-
-                    st.write(context)
 
 
 # ============================================================
@@ -1251,26 +3067,28 @@ elif page == "🔍 Single Evaluation":
 
 elif page == "📊 Batch Evaluation":
 
-    st.markdown(
-        '<div class="page-title">Batch Evaluation</div>',
-        unsafe_allow_html=True,
+    st.title(
+        "📊 Batch Evaluation"
     )
 
-    st.markdown(
-        """
-        <div class="page-subtitle">
-            Evaluate multiple AI responses automatically using CSV input.
-        </div>
-        """,
-        unsafe_allow_html=True,
+    st.write(
+        "Upload a CSV file containing multiple "
+        "questions and AI responses."
     )
 
     uploaded_file = st.file_uploader(
-        "Upload CSV file",
-        type=["csv"],
+        "Upload CSV",
+        type=["csv"]
     )
 
-    if uploaded_file is not None:
+    if uploaded_file is None:
+
+        st.info(
+            "Please upload a CSV file to start "
+            "batch evaluation."
+        )
+
+    else:
 
         try:
 
@@ -1278,462 +3096,757 @@ elif page == "📊 Batch Evaluation":
                 uploaded_file
             )
 
-            st.subheader(
-                "Uploaded Dataset"
-            )
-
-            st.dataframe(
-                batch_df,
-                use_container_width=True,
-            )
-
-            required_columns = [
-                "question",
-                "ai_response",
-            ]
-
-            missing_columns = [
-                column
-                for column in required_columns
-                if column not in batch_df.columns
-            ]
-
-            if missing_columns:
+            if batch_df.empty:
 
                 st.error(
-                    "Missing required columns: "
-                    + ", ".join(missing_columns)
-                )
-
-            elif batch_df.empty:
-
-                st.warning(
-                    "The CSV file is empty."
+                    "The uploaded CSV is empty."
                 )
 
             else:
 
-                st.success(
-                    f"CSV validated successfully. "
-                    f"{len(batch_df)} records found."
+                st.markdown(
+                    "### 📄 Uploaded Data"
                 )
 
-                if st.button(
-                    "🚀 Run Batch Evaluation",
-                    type="primary",
-                ):
+                st.dataframe(
+                    batch_df,
+                    width="stretch",
+                    hide_index=True,
+                )
 
-                    results = []
+                # ====================================================
+                # COLUMN DETECTION
+                # ====================================================
 
-                    progress_bar = st.progress(
-                        0
+                question_column = None
+                response_column = None
+                reference_column = None
+
+                possible_question_columns = [
+                    "Question",
+                    "question",
+                    "Query",
+                    "query",
+                ]
+
+                possible_response_columns = [
+                    "AI Response",
+                    "ai_response",
+                    "Response",
+                    "response",
+                    "Answer",
+                    "answer",
+                ]
+
+                possible_reference_columns = [
+                    "Reference",
+                    "reference",
+                    "Reference Answer",
+                    "reference_answer",
+                ]
+
+                for column in possible_question_columns:
+
+                    if column in batch_df.columns:
+
+                        question_column = (
+                            column
+                        )
+                        break
+
+                for column in possible_response_columns:
+
+                    if column in batch_df.columns:
+
+                        response_column = (
+                            column
+                        )
+                        break
+
+                for column in possible_reference_columns:
+
+                    if column in batch_df.columns:
+
+                        reference_column = (
+                            column
+                        )
+                        break
+
+                # ====================================================
+                # VALIDATION
+                # ====================================================
+
+                if question_column is None:
+
+                    st.error(
+                        "CSV must contain a "
+                        "Question column."
                     )
 
-                    status_text = st.empty()
+                elif response_column is None:
 
-                    total_records = len(
-                        batch_df
+                    st.error(
+                        "CSV must contain an "
+                        "AI Response column."
                     )
 
-                    for index, row in batch_df.iterrows():
+                else:
 
-                        record_number = index + 1
+                    st.success(
+                        f"Detected Question column: "
+                        f"{question_column}"
+                    )
 
-                        status_text.write(
-                            f"Evaluating record "
-                            f"{record_number} of "
-                            f"{total_records}..."
+                    st.success(
+                        f"Detected Response column: "
+                        f"{response_column}"
+                    )
+
+                    if reference_column:
+
+                        st.info(
+                            f"Detected Reference column: "
+                            f"{reference_column}"
                         )
 
-                        payload = {
-                            "question": str(
-                                row["question"]
-                            ),
-                            "response": str(
-                                row["ai_response"]
-                            ),
-                            "reference_answer": (
-                                str(
-                                    row["reference_answer"]
-                                )
-                                if (
-                                    "reference_answer"
-                                    in batch_df.columns
-                                    and pd.notna(
-                                        row["reference_answer"]
-                                    )
-                                )
-                                else None
-                            ),
-                            "source_document": (
-                                str(
-                                    row["source_document"]
-                                )
-                                if (
-                                    "source_document"
-                                    in batch_df.columns
-                                    and pd.notna(
-                                        row["source_document"]
-                                    )
-                                )
-                                else None
-                            ),
-                            "use_knowledge_base": True,
-                            "top_k": 1,
-                        }
+                    else:
 
-                        try:
+                        st.info(
+                            "No Reference column detected. "
+                            "Evaluation will continue without "
+                            "reference answers."
+                        )
 
-                            response = requests.post(
-                                f"{BACKEND_URL}/evaluate",
-                                json=payload,
-                                timeout=180,
+                    # ====================================================
+                    # RUN BUTTON
+                    # ====================================================
+
+                    st.markdown("---")
+
+                    st.markdown(
+                        "### 🚀 Start Batch Evaluation"
+                    )
+
+                    st.write(
+                        f"Ready to evaluate "
+                        f"**{len(batch_df)} records**."
+                    )
+
+                    run_batch = st.button(
+                        "🚀 Run Batch Evaluation",
+                        width="stretch",
+                        type="primary",
+                    )
+
+                    # ====================================================
+                    # START EVALUATION
+                    # ====================================================
+
+                    if run_batch:
+
+                        results = []
+
+                        total_records = len(
+                            batch_df
+                        )
+
+                        progress_bar = (
+                            st.progress(0)
+                        )
+
+                        status_text = st.empty()
+
+                        # --------------------------------------------
+                        # RECORD LOOP
+                        # --------------------------------------------
+
+                        for index, row in (
+                            batch_df.iterrows()
+                        ):
+
+                            record_number = (
+                                index + 1
                             )
 
-                            if response.status_code == 200:
+                            status_text.write(
+                                f"Evaluating record "
+                                f"{record_number} of "
+                                f"{total_records}..."
+                            )
 
-                                report = response.json()
+                            question_value = str(
+                                row.get(
+                                    question_column,
+                                    ""
+                                )
+                            ).strip()
 
-                                hallucination_data = report.get(
-                                    "hallucination",
-                                    {},
+                            response_value = str(
+                                row.get(
+                                    response_column,
+                                    ""
+                                )
+                            ).strip()
+
+                            reference_value = ""
+
+                            if reference_column:
+
+                                reference_value = str(
+                                    row.get(
+                                        reference_column,
+                                        ""
+                                    )
+                                ).strip()
+
+                            # ----------------------------------------
+                            # VALIDATE QUESTION
+                            # ----------------------------------------
+
+                            if (
+                                not question_value
+                                or question_value.lower()
+                                == "nan"
+                            ):
+
+                                results.append(
+                                    {
+                                        "Record": record_number,
+                                        "Question": "",
+                                        "AI Response": response_value,
+                                        "Verdict": "ERROR",
+                                        "Error": (
+                                            "Question is missing."
+                                        ),
+                                    }
                                 )
 
-                                detected = hallucination_data.get(
-                                    "hallucination_detected"
+                                progress_bar.progress(
+                                    record_number
+                                    / total_records
                                 )
 
-                                if detected is True:
+                                continue
 
-                                    hallucination_status = "YES"
+                            # ----------------------------------------
+                            # VALIDATE RESPONSE
+                            # ----------------------------------------
 
-                                elif detected is False:
+                            if (
+                                not response_value
+                                or response_value.lower()
+                                == "nan"
+                            ):
 
-                                    hallucination_status = "NO"
+                                results.append(
+                                    {
+                                        "Record": record_number,
+                                        "Question": question_value,
+                                        "AI Response": "",
+                                        "Verdict": "ERROR",
+                                        "Error": (
+                                            "AI Response is missing."
+                                        ),
+                                    }
+                                )
+
+                                progress_bar.progress(
+                                    record_number
+                                    / total_records
+                                )
+
+                                continue
+
+                            # ----------------------------------------
+                            # API PAYLOAD
+                            # ----------------------------------------
+                            payload = {
+                                "question": question_value,
+                                "response": response_value,
+                                "reference_answer": reference_value,
+                                "source_document": "",
+                                "use_knowledge_base": False,
+                                "top_k": 3,
+                            }
+                            
+                            # ----------------------------------------
+                            # API CALL
+                            # ----------------------------------------
+
+                            try:
+
+                                api_response = requests.post(
+                                    API_URL,
+                                    json=payload,
+                                    timeout=120,
+                                )
+
+                                # ------------------------------------
+                                # SUCCESS
+                                # ------------------------------------
+
+                                if (
+                                    api_response.status_code
+                                    == 200
+                                ):
+
+                                    data = (
+                                        api_response.json()
+                                    )
+
+                                    relevance = (
+                                        normalize_score(
+                                            data.get(
+                                                "relevance"
+                                            )
+                                        )
+                                    )
+
+                                    factuality = (
+                                        normalize_score(
+                                            data.get(
+                                                "factuality"
+                                            )
+                                        )
+                                    )
+
+                                    completeness = (
+                                        normalize_score(
+                                            data.get(
+                                                "completeness"
+                                            )
+                                        )
+                                    )
+
+                                    semantic_similarity = (
+                                        normalize_score(
+                                            data.get(
+                                                "semantic_similarity"
+                                            )
+                                        )
+                                    )
+
+                                    overall_score = (
+                                        get_value(
+                                            data,
+                                            [
+                                                "overall_score",
+                                                "verdict_overall_score",
+                                            ]
+                                        )
+                                    )
+
+                                    weighted_score = (
+                                        get_value(
+                                            data,
+                                            [
+                                                "weighted_score",
+                                                "Weighted Score",
+                                                "verdict_overall_score",
+                                            ]
+                                        )
+                                    )
+
+                                    verdict = (
+                                        clean_verdict(
+                                            get_value(
+                                                data,
+                                                [
+                                                    "verdict",
+                                                    "Verdict",
+                                                ]
+                                            )
+                                        )
+                                    )
+
+                                    # --------------------------------
+                                    # FAITHFULNESS
+                                    # --------------------------------
+
+                                    faithfulness_data = (
+                                        data.get(
+                                            "faithfulness",
+                                            {}
+                                        )
+                                    )
+
+                                    if isinstance(
+                                        faithfulness_data,
+                                        dict
+                                    ):
+
+                                        faithfulness = (
+                                            faithfulness_data.get(
+                                                "score"
+                                            )
+                                        )
+
+                                    else:
+
+                                        faithfulness = (
+                                            normalize_score(
+                                                faithfulness_data
+                                            )
+                                        )
+
+                                    # --------------------------------
+                                    # HALLUCINATION
+                                    # --------------------------------
+
+                                    hallucination_status = (
+                                        extract_hallucination_status(
+                                            data
+                                        )
+                                    )
+
+                                    # --------------------------------
+                                    # SAVE RESULT
+                                    # --------------------------------
+
+                                    results.append(
+                                        {
+                                            "Record": record_number,
+                                            "Question": question_value,
+                                            "AI Response": response_value,
+                                            "Relevance": relevance,
+                                            "Factuality": factuality,
+                                            "Faithfulness": faithfulness,
+                                            "Completeness": completeness,
+                                            "Semantic Similarity": semantic_similarity,
+                                            "Overall Score": overall_score,
+                                            "Weighted Score": weighted_score,
+                                            "Hallucination": hallucination_status,
+                                            "Verdict": verdict,
+                                            "Full Report": data,
+                                        }
+                                    )
+
+                                # ------------------------------------
+                                # API ERROR
+                                # ------------------------------------
 
                                 else:
 
-                                    hallucination_status = "UNCERTAIN"
+                                    results.append(
+                                        {
+                                            "Record": record_number,
+                                            "Question": question_value,
+                                            "AI Response": response_value,
+                                            "Verdict": "ERROR",
+                                            "Error": (
+                                                f"API returned "
+                                                f"{api_response.status_code}: "
+                                                f"{api_response.text[:300]}"
+                                            ),
+                                        }
+                                    )
+
+                            # ----------------------------------------
+                            # TIMEOUT
+                            # ----------------------------------------
+
+                            except requests.exceptions.Timeout:
 
                                 results.append(
                                     {
                                         "Record": record_number,
-                                        "Question": payload[
-                                            "question"
-                                        ],
-                                        "Relevance": report.get(
-                                            "relevance_score"
-                                        ),
-                                        "Factuality": report.get(
-                                            "factuality_score"
-                                        ),
-                                        "Faithfulness": report.get(
-                                            "faithfulness_score"
-                                        ),
-                                        "Completeness": report.get(
-                                            "completeness_score"
-                                        ),
-                                        "Semantic Similarity": report.get(
-                                            "semantic_similarity_score"
-                                        ),
-                                        "Overall Score": report.get(
-                                            "overall_score"
-                                        ),
-                                        "Verdict": report.get(
-                                            "verdict"
-                                        ),
-                                        "Hallucination": (
-                                            hallucination_status
-                                        ),
-                                    }
-                                )
-
-                            else:
-
-                                results.append(
-                                    {
-                                        "Record": record_number,
-                                        "Question": payload[
-                                            "question"
-                                        ],
-                                        "Relevance": None,
-                                        "Factuality": None,
-                                        "Faithfulness": None,
-                                        "Completeness": None,
-                                        "Semantic Similarity": None,
-                                        "Overall Score": None,
+                                        "Question": question_value,
+                                        "AI Response": response_value,
                                         "Verdict": "ERROR",
-                                        "Hallucination": "ERROR",
+                                        "Error": (
+                                            "FastAPI request timed out."
+                                        ),
                                     }
                                 )
 
-                                st.error(
-                                    f"Record {record_number} failed: "
-                                    f"HTTP {response.status_code}"
+                            # ----------------------------------------
+                            # CONNECTION ERROR
+                            # ----------------------------------------
+
+                            except requests.exceptions.ConnectionError:
+
+                                results.append(
+                                    {
+                                        "Record": record_number,
+                                        "Question": question_value,
+                                        "AI Response": response_value,
+                                        "Verdict": "ERROR",
+                                        "Error": (
+                                            "FastAPI backend connection "
+                                            "failed. Make sure port 8001 "
+                                            "is running."
+                                        ),
+                                    }
                                 )
 
-                        except requests.exceptions.RequestException as error:
+                            # ----------------------------------------
+                            # OTHER ERROR
+                            # ----------------------------------------
 
-                            results.append(
-                                {
-                                    "Record": record_number,
-                                    "Question": payload[
-                                        "question"
-                                    ],
-                                    "Relevance": None,
-                                    "Factuality": None,
-                                    "Faithfulness": None,
-                                    "Completeness": None,
-                                    "Semantic Similarity": None,
-                                    "Overall Score": None,
-                                    "Verdict": "ERROR",
-                                    "Hallucination": "ERROR",
-                                }
+                            except Exception as e:
+
+                                results.append(
+                                    {
+                                        "Record": record_number,
+                                        "Question": question_value,
+                                        "AI Response": response_value,
+                                        "Verdict": "ERROR",
+                                        "Error": str(e),
+                                    }
+                                )
+
+                            progress_bar.progress(
+                                record_number
+                                / total_records
                             )
 
-                            st.error(
-                                f"Record {record_number} failed: "
-                                f"{error}"
-                            )
+                        # ====================================================
+                        # STORE RESULTS
+                        # ====================================================
 
-                        progress_bar.progress(
-                            record_number / total_records
+                        results_df = pd.DataFrame(
+                            results
                         )
 
-                    status_text.success(
-                        "Batch evaluation completed successfully."
-                    )
+                        st.session_state.batch_results = (
+                            results_df
+                        )
 
-                    st.session_state.batch_results = (
-                        pd.DataFrame(results)
-                    )
+                        progress_bar.progress(
+                            1.0
+                        )
 
-        except Exception as error:
+                        status_text.success(
+                            "Batch evaluation completed."
+                        )
+
+                        st.success(
+                            f"Completed evaluation of "
+                            f"{total_records} records."
+                        )
+
+                        # ====================================================
+                        # SHOW BATCH RESULTS
+                        # ====================================================
+
+                        st.markdown(
+                            "## 📋 Batch Results"
+                        )
+
+                        display_columns = [
+                            "Record",
+                            "Question",
+                            "Relevance",
+                            "Factuality",
+                            "Faithfulness",
+                            "Completeness",
+                            "Semantic Similarity",
+                            "Overall Score",
+                            "Weighted Score",
+                            "Hallucination",
+                            "Verdict",
+                            "Error",
+                        ]
+
+                        available_columns = [
+                            column
+                            for column in display_columns
+                            if column in results_df.columns
+                        ]
+
+                        st.dataframe(
+                            results_df[
+                                available_columns
+                            ],
+                            width="stretch",
+                            hide_index=True,
+                        )
+
+                        # ====================================================
+                        # CSV DOWNLOAD
+                        # ====================================================
+
+                        download_df = (
+                            results_df.copy()
+                        )
+
+                        if "Full Report" in download_df.columns:
+
+                            download_df = (
+                                download_df.drop(
+                                    columns=[
+                                        "Full Report"
+                                    ]
+                                )
+                            )
+
+                        st.download_button(
+                            label=(
+                                "⬇️ Download Batch Results"
+                            ),
+                            data=download_df.to_csv(
+                                index=False
+                            ),
+                            file_name=(
+                                "batch_evaluation_results.csv"
+                            ),
+                            mime="text/csv",
+                            width="stretch",
+                        )
+
+                        # ====================================================
+                        # M4.2 PDF EXPORT
+                        # ====================================================
+
+                        st.markdown("---")
+
+                        st.markdown(
+                            "## 📄 M4.2 - PDF Batch Summary"
+                        )
+
+                        try:
+
+                            pdf_bytes = create_batch_pdf(
+                                st.session_state.batch_results
+                            )
+
+                            st.download_button(
+                                label=(
+                                    "📥 Download Batch "
+                                    "Evaluation PDF"
+                                ),
+                                data=pdf_bytes,
+                                file_name=(
+                                    "llm_batch_evaluation_summary.pdf"
+                                ),
+                                mime="application/pdf",
+                                width="stretch",
+                            )
+
+                            st.success(
+                                "M4.2 PDF Summary is ready."
+                            )
+
+                            st.caption(
+                                "The PDF includes batch summary, "
+                                "dimension scores, weighted scores, "
+                                "verdicts, hallucination analysis, "
+                                "completeness analysis, detailed "
+                                "evaluation reasoning and "
+                                "recommendations."
+                            )
+
+                        except Exception as pdf_error:
+
+                            st.error(
+                                "Unable to generate PDF: "
+                                f"{pdf_error}"
+                            )
+
+                        # ====================================================
+                        # INFORMATION
+                        # ====================================================
+
+                        st.info(
+                            "Batch results are now stored. "
+                            "Open 🏠 Dashboard to view the "
+                            "M4.1 dashboard."
+                        )
+
+        except Exception as e:
 
             st.error(
-                "Could not read the CSV file."
-            )
-
-            st.exception(error)
-
-    # ========================================================
-    # DISPLAY BATCH RESULTS
-    # ========================================================
-
-    if st.session_state.batch_results is not None:
-
-        results_df = st.session_state.batch_results
-
-        st.divider()
-
-        st.subheader(
-            "Batch Evaluation Results"
-        )
-
-        st.dataframe(
-            results_df,
-            use_container_width=True,
-        )
-
-        successful_results = results_df[
-            results_df["Verdict"] != "ERROR"
-        ]
-
-        if not successful_results.empty:
-
-            st.subheader(
-                "Batch Summary"
-            )
-
-            average_score = (
-                successful_results[
-                    "Overall Score"
-                ]
-                .dropna()
-                .mean()
-            )
-
-            pass_count = (
-                successful_results[
-                    "Verdict"
-                ]
-                == "PASS"
-            ).sum()
-
-            hallucination_count = (
-                successful_results[
-                    "Hallucination"
-                ]
-                == "YES"
-            ).sum()
-
-            b1, b2, b3 = st.columns(3)
-
-            with b1:
-
-                st.metric(
-                    "Average Overall Score",
-                    (
-                        f"{average_score:.2f}"
-                        if pd.notna(average_score)
-                        else "N/A"
-                    ),
-                )
-
-            with b2:
-
-                st.metric(
-                    "PASS",
-                    int(pass_count),
-                )
-
-            with b3:
-
-                st.metric(
-                    "Hallucinations Detected",
-                    int(hallucination_count),
-                )
-
-            st.subheader(
-                "Verdict Distribution"
-            )
-
-            verdict_counts = (
-                successful_results[
-                    "Verdict"
-                ]
-                .value_counts()
-            )
-
-            st.bar_chart(
-                verdict_counts
-            )
-
-            csv_data = results_df.to_csv(
-                index=False
-            )
-
-            st.download_button(
-                label="⬇️ Download Batch Results CSV",
-                data=csv_data,
-                file_name="m3_batch_evaluation_results.csv",
-                mime="text/csv",
-            )
-
-        else:
-
-            st.warning(
-                "No records were evaluated successfully."
+                f"Unable to read CSV file: {e}"
             )
 
 
 # ============================================================
-# RESULTS PAGE
+# RESULTS
 # ============================================================
 
 elif page == "📋 Results":
 
-    st.markdown(
-        '<div class="page-title">Evaluation Results</div>',
-        unsafe_allow_html=True,
+    st.title(
+        "📋 Evaluation Results"
     )
 
-    st.markdown(
-        """
-        <div class="page-subtitle">
-            Review your latest evaluation outputs.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    if st.session_state.batch_results is None:
 
-    if st.session_state.single_report is not None:
-
-        st.subheader(
-            "Latest Single Evaluation"
+        st.info(
+            "No batch results available yet."
         )
-
-        report = st.session_state.single_report
-
-        r1, r2, r3 = st.columns(3)
-
-        with r1:
-
-            score = report.get(
-                "overall_score"
-            )
-
-            st.metric(
-                "Overall Score",
-                (
-                    f"{score:.2f}"
-                    if score is not None
-                    else "N/A"
-                ),
-            )
-
-        with r2:
-
-            st.metric(
-                "Verdict",
-                report.get(
-                    "verdict",
-                    "N/A",
-                ),
-            )
-
-        with r3:
-
-            hallucination = report.get(
-                "hallucination",
-                {},
-            )
-
-            detected = hallucination.get(
-                "hallucination_detected"
-            )
-
-            if detected is True:
-
-                value = "YES"
-
-            elif detected is False:
-
-                value = "NO"
-
-            else:
-
-                value = "UNCERTAIN"
-
-            st.metric(
-                "Hallucination",
-                value,
-            )
 
     else:
 
-        st.info(
-            "No single evaluation result available yet."
-        )
-
-    if st.session_state.batch_results is not None:
-
-        st.divider()
-
-        st.subheader(
-            "Latest Batch Evaluation"
+        results_df = (
+            st.session_state.batch_results
         )
 
         st.dataframe(
-            st.session_state.batch_results,
-            use_container_width=True,
+            results_df,
+            width="stretch",
+            hide_index=True,
         )
 
-    else:
-
-        st.info(
-            "No batch evaluation result available yet."
+        download_df = (
+            results_df.copy()
         )
+
+        if "Full Report" in download_df.columns:
+
+            download_df = download_df.drop(
+                columns=[
+                    "Full Report"
+                ]
+            )
+
+        st.download_button(
+            label="⬇️ Download Results CSV",
+            data=download_df.to_csv(
+                index=False
+            ),
+            file_name=(
+                "batch_evaluation_results.csv"
+            ),
+            mime="text/csv",
+            width="stretch",
+        )
+
+        # ====================================================
+        # PDF EXPORT FROM RESULTS PAGE
+        # ====================================================
+
+        st.markdown("---")
+
+        st.markdown(
+            "## 📄 M4.2 - PDF Batch Summary"
+        )
+
+        try:
+
+            pdf_bytes = create_batch_pdf(
+                results_df
+            )
+
+            st.download_button(
+                label=(
+                    "📥 Download Batch "
+                    "Evaluation PDF"
+                ),
+                data=pdf_bytes,
+                file_name=(
+                    "llm_batch_evaluation_summary.pdf"
+                ),
+                mime="application/pdf",
+                width="stretch",
+            )
+
+        except Exception as pdf_error:
+
+            st.error(
+                f"Unable to generate PDF: "
+                f"{pdf_error}"
+            )
 
 
 # ============================================================
@@ -1742,54 +3855,50 @@ elif page == "📋 Results":
 
 elif page == "ℹ️ About":
 
-    st.markdown(
-        '<div class="page-title">About the Project</div>',
-        unsafe_allow_html=True,
+    st.title(
+        "ℹ️ About the System"
     )
 
     st.markdown(
         """
-        <div class="page-subtitle">
-            Automated quality evaluation of AI-generated responses.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        ## Automated LLM Evaluation and Hallucination Detection System
 
-    st.markdown(
-        """
-        ### Automated LLM Evaluation and Hallucination Detection System
-
-        This project provides an automated quality-checking system
-        for AI-generated responses.
+        This platform automatically evaluates AI-generated responses
+        using multiple evaluation dimensions.
 
         ### Evaluation Dimensions
 
-        - Relevance
-        - Accuracy / Factuality
-        - Faithfulness
-        - Completeness
-        - Semantic Similarity
-        - Hallucination Detection
+        - **Relevance** – checks whether the response addresses the question.
+        - **Factuality** – checks factual correctness.
+        - **Faithfulness** – checks whether claims are supported by evidence.
+        - **Completeness** – checks whether important information is missing.
+        - **Semantic Similarity** – compares the response with the reference answer.
+        - **Hallucination Detection** – identifies unsupported claims.
 
-        ### Technology Stack
+        ### Evaluation Workflow
 
-        - Python
-        - Streamlit
-        - FastAPI
-        - ChromaDB
-        - Sentence Transformers
-        - Hugging Face Datasets
+        **Input → Knowledge Base / RAG → Evaluation Agents → Scoring → Verdict → Dashboard**
 
-        ### Main Capabilities
+        ### Verdicts
 
-        - Single response evaluation
-        - Knowledge-base retrieval
-        - Evidence-based evaluation
-        - Multi-dimensional scoring
-        - Final PASS / NEEDS IMPROVEMENT / FAIL verdict
-        - Batch CSV evaluation
-        - Batch result summary
-        - Downloadable CSV results
+        - PASS
+        - NEEDS IMPROVEMENT
+        - FAIL
+
+        ### Milestone 4
+
+        The dashboard provides:
+
+        - Overall response statistics
+        - Verdict percentages
+        - Average dimension scores
+        - Hallucination statistics
+        - Completeness statistics
+        - Frequent evaluation issues
+        - Score visualization
+        - Verdict distribution
+        - Individual result drill-down
+        - CSV export
+        - PDF batch summary export
         """
     )

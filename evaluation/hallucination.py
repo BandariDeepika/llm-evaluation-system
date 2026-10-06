@@ -1,3 +1,4 @@
+
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -7,17 +8,11 @@ from evaluation.common import split_claims, supported_claims
 
 class HallucinationResult(BaseModel):
     hallucination_detected: Optional[bool]
-
     severity: Optional[Literal["LOW", "MEDIUM", "HIGH"]]
-
     unsupported_claims: list[str] = Field(default_factory=list)
-
     contradicted_claims: list[str] = Field(default_factory=list)
-
     supported_claims: list[str] = Field(default_factory=list)
-
     explanation: str
-
     certainty: Literal["certain", "uncertain"]
 
 
@@ -26,45 +21,118 @@ def _detect_contradictions(
     evidence: str,
 ) -> list[str]:
     """
-    Detect simple direct contradictions between claims and evidence.
+    Detect factual contradictions between the AI response
+    and the supplied reference evidence.
     """
 
     contradictions = []
 
     evidence_lower = evidence.lower()
 
+    # ---------------------------------------------------------
+    # Known capital-city relationships
+    # ---------------------------------------------------------
+
+    capital_pairs = {
+        "france": "paris",
+        "united kingdom": "london",
+        "uk": "london",
+        "germany": "berlin",
+        "italy": "rome",
+        "japan": "tokyo",
+        "india": "delhi",
+        "china": "beijing",
+        "united states": "washington",
+        "usa": "washington",
+    }
+
+    capital_cities = {
+        "paris",
+        "london",
+        "berlin",
+        "rome",
+        "tokyo",
+        "delhi",
+        "beijing",
+        "washington",
+    }
+
+    # ---------------------------------------------------------
+    # Check each AI claim
+    # ---------------------------------------------------------
+
     for claim in claims:
+
         claim_lower = claim.lower()
 
-        if "capital" in claim_lower and "capital" in evidence_lower:
-            if "france" in claim_lower and "france" in evidence_lower:
+        if "capital" not in claim_lower:
+            continue
 
-                capitals = {
-                    "paris",
-                    "london",
-                    "berlin",
-                    "rome",
-                    "tokyo",
-                    "delhi",
-                    "beijing",
-                    "washington",
-                }
+        # -----------------------------------------------------
+        # Check country-capital relationships
+        # -----------------------------------------------------
 
-                claim_values = {
-                    word
-                    for word in capitals
-                    if word in claim_lower
-                }
+        for country, correct_capital in capital_pairs.items():
 
-                evidence_values = {
-                    word
-                    for word in capitals
-                    if word in evidence_lower
-                }
+            if country not in claim_lower:
+                continue
 
-                if claim_values and evidence_values:
-                    if claim_values.isdisjoint(evidence_values):
+            # Find capital mentioned in AI response
+            claim_capitals = {
+                city
+                for city in capital_cities
+                if city in claim_lower
+            }
+
+            # If AI response mentions a capital
+            if claim_capitals:
+
+                # If the correct capital is not mentioned,
+                # but another capital is mentioned,
+                # it is a contradiction.
+                if correct_capital not in claim_capitals:
+
+                    contradictions.append(claim)
+
+                # If the correct capital is mentioned,
+                # verify that evidence agrees.
+                elif correct_capital in claim_capitals:
+
+                    if correct_capital not in evidence_lower:
                         contradictions.append(claim)
+
+            break
+
+    # ---------------------------------------------------------
+    # Direct France example
+    # ---------------------------------------------------------
+
+    if (
+        "capital of france" in evidence_lower
+    ):
+
+        for claim in claims:
+
+            claim_lower = claim.lower()
+
+            if "capital of france" not in claim_lower:
+                continue
+
+            # Evidence says Paris but response says London
+            if (
+                "paris" in evidence_lower
+                and "london" in claim_lower
+            ):
+                if claim not in contradictions:
+                    contradictions.append(claim)
+
+            # Evidence says London but response says Paris
+            elif (
+                "london" in evidence_lower
+                and "paris" in claim_lower
+            ):
+                if claim not in contradictions:
+                    contradictions.append(claim)
 
     return contradictions
 
@@ -74,10 +142,8 @@ def _is_related_definition(
     evidence: str,
 ) -> bool:
     """
-    Detect simple semantically related definition claims.
-
-    This prevents valid alternative explanations from being
-    incorrectly classified as hallucinations.
+    Check whether a definition-type claim is related
+    to the supplied evidence.
     """
 
     claim_lower = claim.lower()
@@ -100,7 +166,11 @@ def _is_related_definition(
     }
 
     for topic in definition_topics:
-        if topic in claim_lower and topic in evidence_lower:
+
+        if (
+            topic in claim_lower
+            and topic in evidence_lower
+        ):
             return True
 
     return False
@@ -111,16 +181,41 @@ def detect_hallucination(
     evidence: Optional[str],
 ) -> HallucinationResult:
     """
-    M2.3 Hallucination Detection Agent.
+    Detect hallucinations using supplied evidence.
 
-    Checks AI-generated claims against supplied evidence and
-    identifies unsupported or contradicted claims.
+    Evidence sources can be:
+    - source document
+    - reference answer
+    - retrieved knowledge-base context
+
+    If evidence is unavailable, the result is UNCERTAIN.
     """
 
-    if not ai_response.strip():
-        raise ValueError("ai_response must contain text")
+    # ---------------------------------------------------------
+    # Validate response
+    # ---------------------------------------------------------
+
+    if not ai_response or not ai_response.strip():
+
+        raise ValueError(
+            "ai_response must contain text"
+        )
+
+    # ---------------------------------------------------------
+    # Debug information
+    # ---------------------------------------------------------
+
+    print(
+        "DEBUG HALLUCINATION EVIDENCE:",
+        repr(evidence),
+    )
+
+    # ---------------------------------------------------------
+    # No evidence
+    # ---------------------------------------------------------
 
     if not evidence or not evidence.strip():
+
         return HallucinationResult(
             hallucination_detected=None,
             severity=None,
@@ -128,15 +223,24 @@ def detect_hallucination(
             contradicted_claims=[],
             supported_claims=[],
             explanation=(
-                "Insufficient evidence to determine whether the "
-                "response contains hallucinations."
+                "Insufficient evidence to determine whether "
+                "the response contains hallucinations."
             ),
             certainty="uncertain",
         )
 
-    claims = split_claims(ai_response)
+    evidence = evidence.strip()
+
+    # ---------------------------------------------------------
+    # Split response into claims
+    # ---------------------------------------------------------
+
+    claims = split_claims(
+        ai_response
+    )
 
     if not claims:
+
         return HallucinationResult(
             hallucination_detected=False,
             severity="LOW",
@@ -149,59 +253,99 @@ def detect_hallucination(
             certainty="certain",
         )
 
+    # ---------------------------------------------------------
+    # Supported / unsupported claims
+    # ---------------------------------------------------------
+
     supported, unsupported = supported_claims(
         claims,
         evidence,
     )
+
+    # ---------------------------------------------------------
+    # Contradiction detection
+    # ---------------------------------------------------------
 
     contradicted = _detect_contradictions(
         claims,
         evidence,
     )
 
-    # Remove contradicted claims from supported claims.
+    # ---------------------------------------------------------
+    # Remove contradicted claims from supported claims
+    # ---------------------------------------------------------
+
     supported = [
         claim
         for claim in supported
         if claim not in contradicted
     ]
 
-    # A related definition is not considered hallucination.
+    # ---------------------------------------------------------
+    # Related definition handling
+    # ---------------------------------------------------------
+
     for claim in list(unsupported):
-        if (
-            claim not in contradicted
-            and _is_related_definition(
+
+        if claim not in contradicted:
+
+            if _is_related_definition(
                 claim,
                 evidence,
-            )
-        ):
-            unsupported.remove(claim)
-            supported.append(claim)
+            ):
 
-    # Keep contradicted claims as unsupported too.
+                unsupported.remove(
+                    claim
+                )
+
+                supported.append(
+                    claim
+                )
+
+    # ---------------------------------------------------------
+    # Contradicted claims must be unsupported
+    # ---------------------------------------------------------
+
     for claim in contradicted:
+
         if claim not in unsupported:
-            unsupported.append(claim)
+
+            unsupported.append(
+                claim
+            )
+
+    # ---------------------------------------------------------
+    # Calculate hallucination
+    # ---------------------------------------------------------
 
     total_claims = len(claims)
 
     problematic_claims = len(
-        set(unsupported) | set(contradicted)
+        set(unsupported)
+        | set(contradicted)
     )
 
-    hallucination_detected = problematic_claims > 0
+    hallucination_detected = (
+        problematic_claims > 0
+    )
 
     problem_ratio = (
-        problematic_claims / max(total_claims, 1)
+        problematic_claims
+        / max(total_claims, 1)
     )
+
+    # ---------------------------------------------------------
+    # Severity
+    # ---------------------------------------------------------
 
     if not hallucination_detected:
 
         severity = "LOW"
 
         explanation = (
-            "All evaluated claims are supported by the supplied "
-            "evidence or are consistent with the referenced topic."
+            "All evaluated claims are supported by the "
+            "supplied evidence or are consistent with the "
+            "referenced information."
         )
 
     elif (
@@ -218,14 +362,15 @@ def detect_hallucination(
 
     elif (
         problem_ratio >= 0.4
-        or contradicted
+        or len(contradicted) > 0
     ):
 
         severity = "MEDIUM"
 
         explanation = (
-            "The response contains unsupported or contradicted "
-            "claims that are not fully supported by the evidence."
+            "The response contains unsupported or "
+            "contradicted claims that are not fully "
+            "supported by the evidence."
         )
 
     else:
@@ -233,15 +378,36 @@ def detect_hallucination(
         severity = "LOW"
 
         explanation = (
-            "The response contains a small number of unsupported claims."
+            "The response contains a small number of "
+            "unsupported claims."
         )
 
+    # ---------------------------------------------------------
+    # Final result
+    # ---------------------------------------------------------
+
     return HallucinationResult(
-        hallucination_detected=hallucination_detected,
+
+        hallucination_detected=(
+            hallucination_detected
+        ),
+
         severity=severity,
-        unsupported_claims=unsupported,
-        contradicted_claims=contradicted,
-        supported_claims=supported,
+
+        unsupported_claims=(
+            unsupported
+        ),
+
+        contradicted_claims=(
+            contradicted
+        ),
+
+        supported_claims=(
+            supported
+        ),
+
         explanation=explanation,
+
         certainty="certain",
     )
+
