@@ -12,6 +12,7 @@ import streamlit as st
 import pandas as pd
 import requests
 
+from frontend.api_config import get_api_base_url
 from frontend.chart_data import (
     batch_chart_data,
     hallucination_status,
@@ -316,10 +317,7 @@ st.markdown(
 # API CONFIGURATION
 # ============================================================
 
-API_BASE_URL = os.getenv(
-    "AEGISEVAL_API_URL",
-    "http://127.0.0.1:8000",
-).rstrip("/")
+API_BASE_URL = get_api_base_url(st.secrets, os.environ)
 API_URL = f"{API_BASE_URL}/evaluate"
 AUTH_URL = f"{API_BASE_URL}/auth"
 
