@@ -1,7 +1,15 @@
+import json
+import os
+
 import streamlit as st
 import pandas as pd
 import requests
 
+from frontend.chart_data import (
+    batch_chart_data,
+    hallucination_status,
+    single_score_data,
+)
 from io import BytesIO
 from xml.sax.saxutils import escape
 
@@ -24,7 +32,7 @@ from reportlab.platypus import (
 # ============================================================
 
 st.set_page_config(
-    page_title="LLM Evaluation Dashboard",
+    page_title="AegisEval",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -38,25 +46,257 @@ st.set_page_config(
 st.markdown(
     """
     <style>
+    :root {
+        color-scheme: dark;
+        --aegis-bg: #080c19;
+        --aegis-surface: #11182a;
+        --aegis-surface-raised: #151e33;
+        --aegis-border: rgba(148, 163, 184, 0.16);
+        --aegis-muted: #9aa8c2;
+        --aegis-cyan: #45d5e7;
+        --aegis-violet: #8a72ff;
+    }
 
     .stApp {
-        background: #0e1117;
+        background:
+            radial-gradient(ellipse at 82% 0%, rgba(72, 72, 182, 0.18), transparent 36%),
+            radial-gradient(ellipse at 0% 36%, rgba(24, 135, 163, 0.09), transparent 32%),
+            var(--aegis-bg);
+        color: #edf3ff;
+    }
+
+    [data-testid="stMain"] .block-container {
+        max-width: 1440px;
+        padding: 2.35rem 3rem 4rem;
+    }
+
+    [data-testid="stHeader"] {
+        background: rgba(8, 12, 25, 0.96);
+    }
+
+    [data-testid="stToolbar"] {
+        background: transparent;
     }
 
     [data-testid="stSidebar"] {
-        background: #111827;
+        background: rgba(9, 14, 29, 0.96);
+        border-right: 1px solid var(--aegis-border);
+    }
+
+    [data-testid="stSidebar"] > div:first-child {
+        padding-top: 1.6rem;
+    }
+
+    [data-testid="stSidebar"] h1 {
+        font-size: 1.45rem;
+        letter-spacing: -0.04em;
+    }
+
+    [data-testid="stSidebar"] [data-testid="stRadio"] label {
+        border-radius: 9px;
+        padding: 0.28rem 0.55rem;
+        transition: background-color 140ms ease, color 140ms ease;
+    }
+
+    [data-testid="stSidebar"] [data-testid="stRadio"] label:hover {
+        background: rgba(69, 213, 231, 0.08);
+    }
+
+    [data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) {
+        background: linear-gradient(100deg, rgba(69, 213, 231, 0.14), rgba(138, 114, 255, 0.12));
+        color: #f3fbff;
+    }
+
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
+        color: var(--aegis-muted);
+    }
+
+    [data-testid="stWidgetLabel"] p,
+    [data-testid="stWidgetLabel"] label {
+        color: #d6e0f2;
+    }
+
+    [data-testid="stRadio"] label p {
+        color: #c7d3e8;
+    }
+
+    [data-testid="stRadio"] label[data-baseweb="radio"] > div:first-child {
+        background: #0d1425 !important;
+        border-color: #8291ad !important;
+    }
+
+    [data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) > div:first-child {
+        background: #0d1425 !important;
+        border-color: var(--aegis-cyan) !important;
+    }
+
+    [data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) > div:first-child > div:first-child {
+        background: var(--aegis-cyan) !important;
+    }
+
+    [data-testid="stRadio"] input[type="radio"] {
+        appearance: none;
+        display: grid;
+        width: 1rem;
+        height: 1rem;
+        margin-top: 0.15rem;
+        border: 2px solid #8291ad;
+        border-radius: 50%;
+        background: #0d1425;
+        place-content: center;
+    }
+
+    [data-testid="stRadio"] input[type="radio"]::before {
+        width: 0.42rem;
+        height: 0.42rem;
+        border-radius: 50%;
+        background: var(--aegis-cyan);
+        content: "";
+        transform: scale(0);
+        transition: transform 120ms ease;
+    }
+
+    [data-testid="stRadio"] input[type="radio"]:checked {
+        border-color: var(--aegis-cyan);
+    }
+
+    [data-testid="stRadio"] input[type="radio"]:checked::before {
+        transform: scale(1);
+    }
+
+    [data-testid="stMetric"] {
+        background: linear-gradient(145deg, rgba(21, 30, 51, 0.96), rgba(15, 23, 41, 0.92));
+        border: 1px solid var(--aegis-border);
+        border-radius: 14px;
+        padding: 18px 20px;
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+        transition: border-color 160ms ease, transform 160ms ease;
+    }
+
+    [data-testid="stMetric"]:hover {
+        border-color: rgba(69, 213, 231, 0.36);
+        transform: translateY(-2px);
+    }
+
+    [data-testid="stMetricLabel"] p,
+    [data-testid="stCaptionContainer"] p {
+        color: var(--aegis-muted);
+    }
+
+    [data-testid="stMetricValue"] {
+        color: #f4f7ff;
+        font-weight: 650;
     }
 
     .main-title {
-        font-size: 38px;
+        font-size: clamp(2rem, 4vw, 2.75rem);
         font-weight: 700;
-        margin-bottom: 5px;
+        margin: 0 0 0.35rem;
+        letter-spacing: -0.03em;
+        background: linear-gradient(100deg, #f5f7ff 20%, #73ddeb 66%, #a69aff);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
     }
 
     .sub-title {
-        font-size: 17px;
-        opacity: 0.75;
-        margin-bottom: 25px;
+        color: var(--aegis-muted);
+        font-size: 1rem;
+        margin-bottom: 1.7rem;
+    }
+
+    h1, h2, h3 {
+        letter-spacing: -0.025em;
+    }
+
+    h2, h3 {
+        color: #e8efff;
+    }
+
+    [data-testid="stTextInput"] input,
+    [data-testid="stTextArea"] textarea,
+    [data-testid="stNumberInput"] input,
+    [data-testid="stSelectbox"] [data-baseweb="select"] > div,
+    [data-testid="stFileUploader"] section {
+        background: rgba(13, 20, 37, 0.82);
+        border-color: rgba(148, 163, 184, 0.22);
+        border-radius: 10px;
+    }
+
+    [data-testid="stTextInput"] input,
+    [data-testid="stTextArea"] textarea,
+    [data-testid="stNumberInput"] input {
+        background-color: rgba(13, 20, 37, 0.96) !important;
+        color: #f2f6ff !important;
+        border: 1px solid rgba(148, 163, 184, 0.28) !important;
+    }
+
+    [data-testid="stTextInput"] button {
+        background-color: #18243b !important;
+        color: #dce7fb !important;
+    }
+
+    [data-testid="stTextInput"] [data-baseweb="input"],
+    [data-testid="stTextInput"] [data-baseweb="base-input"] {
+        background-color: rgba(13, 20, 37, 0.96) !important;
+        border-color: rgba(148, 163, 184, 0.28) !important;
+    }
+
+    [data-testid="stTextInput"] input:focus,
+    [data-testid="stTextArea"] textarea:focus,
+    [data-testid="stNumberInput"] input:focus {
+        border-color: var(--aegis-cyan);
+        box-shadow: 0 0 0 1px rgba(69, 213, 231, 0.42);
+    }
+
+    [data-testid="stForm"] {
+        background: linear-gradient(145deg, rgba(18, 26, 45, 0.88), rgba(12, 18, 33, 0.84));
+        border: 1px solid var(--aegis-border);
+        border-radius: 16px;
+        padding: 1.35rem 1.5rem;
+    }
+
+    [data-testid="stButton"] button,
+    [data-testid="stFormSubmitButton"] button,
+    [data-testid="stDownloadButton"] button {
+        border-radius: 10px;
+        font-weight: 600;
+        transition: transform 140ms ease, border-color 140ms ease, filter 140ms ease;
+    }
+
+    [data-testid="stButton"] button:hover,
+    [data-testid="stFormSubmitButton"] button:hover,
+    [data-testid="stDownloadButton"] button:hover {
+        border-color: rgba(69, 213, 231, 0.62);
+        transform: translateY(-1px);
+    }
+
+    [data-testid="stButton"] button[kind="primary"],
+    [data-testid="stFormSubmitButton"] button[kind="primaryFormSubmit"] {
+        background: linear-gradient(105deg, #168eaa, #5b66d8 72%, #765ce1);
+        border: 0;
+        color: white;
+    }
+
+    [data-testid="stDataFrame"],
+    [data-testid="stTable"] {
+        border: 1px solid var(--aegis-border);
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    [data-testid="stAlert"] {
+        border-radius: 10px;
+    }
+
+    @media (max-width: 800px) {
+        [data-testid="stMain"] .block-container {
+            padding: 1.5rem 1rem 3rem;
+        }
+
+        [data-testid="stForm"] {
+            padding: 1rem;
+        }
     }
 
     </style>
@@ -69,7 +309,12 @@ st.markdown(
 # API CONFIGURATION
 # ============================================================
 
-API_URL = "http://127.0.0.1:8001/evaluate"
+API_BASE_URL = os.getenv(
+    "AEGISEVAL_API_URL",
+    "http://127.0.0.1:8000",
+).rstrip("/")
+API_URL = f"{API_BASE_URL}/evaluate"
+AUTH_URL = f"{API_BASE_URL}/auth"
 
 
 # ============================================================
@@ -81,6 +326,273 @@ if "batch_results" not in st.session_state:
 
 if "single_result" not in st.session_state:
     st.session_state.single_result = None
+if "auth_mode" not in st.session_state:
+    st.session_state.auth_mode = "Login"
+
+if "auth_mode_version" not in st.session_state:
+    st.session_state.auth_mode_version = 0
+
+
+def auth_headers():
+    token = st.session_state.get("auth_token")
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
+def update_auth_mode(widget_key):
+    st.session_state.auth_mode = st.session_state[widget_key]
+
+
+def show_auth_page():
+    left, center, right = st.columns([1.15, 1.7, 1.15])
+    with center:
+        st.markdown(
+            '<div style="text-align:center; padding:1.2rem 0 0.8rem;">'
+            '<div style="display:inline-block; padding:0.32rem 0.8rem; margin-bottom:0.9rem; '
+            'border:1px solid rgba(69,213,231,.32); border-radius:999px; '
+            'background:rgba(69,213,231,.08); color:#72dce9; font-size:.76rem; '
+            'font-weight:700; letter-spacing:.12em; text-transform:uppercase;">'
+            'AI Response Evaluation</div>'
+            '<div class="main-title">AegisEval</div>'
+            '<div class="sub-title">Sign in to evaluate responses and review your private history.</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        auth_notice = st.session_state.pop("auth_notice", None)
+        if auth_notice:
+            st.success(auth_notice)
+        mode_widget_key = f"auth_mode_{st.session_state.auth_mode_version}"
+        mode = st.radio(
+            "Account",
+            ["Login", "Register"],
+            horizontal=True,
+            index=0 if st.session_state.auth_mode == "Login" else 1,
+            key=mode_widget_key,
+            on_change=update_auth_mode,
+            args=(mode_widget_key,),
+        )
+
+        with st.form(f"{mode.lower()}_form"):
+            if mode == "Register":
+                full_name = st.text_input("Full name")
+                email = st.text_input("Email")
+                username = st.text_input("Username")
+            else:
+                username = st.text_input("Username or email")
+            password = st.text_input("Password", type="password")
+            confirm_password = (
+                st.text_input("Confirm password", type="password")
+                if mode == "Register"
+                else None
+            )
+            submitted = st.form_submit_button(mode, type="primary", use_container_width=True)
+
+        if not submitted:
+            return
+        if mode == "Register" and password != confirm_password:
+            st.error("Passwords do not match.")
+            return
+
+        endpoint = "register" if mode == "Register" else "login"
+        payload = (
+            {
+                "full_name": full_name,
+                "email": email,
+                "username": username,
+                "password": password,
+                "confirm_password": confirm_password,
+            }
+            if mode == "Register"
+            else {"username_or_email": username, "password": password}
+        )
+        try:
+            response = requests.post(
+                f"{AUTH_URL}/{endpoint}",
+                json=payload,
+                timeout=20,
+            )
+            if response.ok:
+                result = response.json()
+                if mode == "Register":
+                    st.session_state.pop("auth_token", None)
+                    st.session_state.pop("auth_user", None)
+                    st.session_state.auth_mode = "Login"
+                    st.session_state.auth_mode_version += 1
+                    st.session_state.auth_notice = (
+                        "Registration successful. Please log in with your new credentials."
+                    )
+                else:
+                    st.session_state.auth_token = result["token"]
+                    st.session_state.auth_user = result["user"]
+                st.rerun()
+            try:
+                detail = response.json().get("detail", "Unable to authenticate.")
+            except (ValueError, AttributeError):
+                detail = "Unable to authenticate. Check the backend connection."
+            st.error(str(detail))
+        except requests.RequestException:
+            st.error("Cannot connect to the API. Start the FastAPI backend and try again.")
+
+
+def clear_auth_state():
+    for key in ("auth_token", "auth_user", "batch_results", "single_result"):
+        st.session_state.pop(key, None)
+    st.session_state.auth_mode = "Login"
+    st.session_state.auth_mode_version += 1
+
+
+def render_account_dashboard():
+    try:
+        dashboard_response = requests.get(
+            f"{AUTH_URL}/dashboard",
+            headers=auth_headers(),
+            timeout=20,
+        )
+        dashboard_response.raise_for_status()
+        summary = dashboard_response.json()
+        evaluations = summary.get("evaluations", [])
+    except requests.RequestException as error:
+        st.error(f"Unable to load your account dashboard: {error}")
+        return
+    except ValueError as error:
+        st.error(f"The API returned invalid dashboard data: {error}")
+        return
+
+    st.subheader("Your evaluation activity")
+    columns = st.columns(4)
+    columns[0].metric("Total evaluations", summary["total_evaluations"])
+    columns[1].metric("PASS", summary["pass_count"])
+    columns[2].metric("NEEDS IMPROVEMENT", summary["needs_improvement_count"])
+    columns[3].metric("FAIL", summary["fail_count"])
+
+    score_values = {
+        "Relevance": [],
+        "Accuracy": [],
+        "Completeness": [],
+        "Hallucination": [],
+    }
+    hallucination_outcomes = {
+        "Detected": 0,
+        "Not detected": 0,
+        "Uncertain": 0,
+    }
+    for item in evaluations:
+        try:
+            metrics = json.loads(item.get("metrics_json") or "{}").get("metrics", {})
+        except (TypeError, json.JSONDecodeError):
+            continue
+        metric_keys = {
+            "Relevance": ("relevance",),
+            "Accuracy": ("factuality", "accuracy"),
+            "Completeness": ("completeness",),
+            "Hallucination": ("hallucination",),
+        }
+        for label, possible_keys in metric_keys.items():
+            metric = next(
+                (metrics[key] for key in possible_keys if key in metrics),
+                None,
+            )
+            score = metric.get("score") if isinstance(metric, dict) else None
+            if score is None:
+                continue
+            try:
+                score_values[label].append(float(score))
+            except (TypeError, ValueError):
+                continue
+        hallucination = metrics.get("hallucination", {})
+        if isinstance(hallucination, dict):
+            if hallucination.get("certainty") == "uncertain" or hallucination.get("hallucination_detected") is None:
+                hallucination_outcomes["Uncertain"] += 1
+            elif hallucination["hallucination_detected"]:
+                hallucination_outcomes["Detected"] += 1
+            else:
+                hallucination_outcomes["Not detected"] += 1
+
+    chart_data = {
+        label: sum(values) / len(values)
+        for label, values in score_values.items()
+        if values
+    }
+    if chart_data:
+        st.subheader("Average evaluation scores")
+        st.caption("Accuracy uses the evaluation engine's factuality score. Metrics without numeric scores are omitted.")
+        chart = pd.DataFrame(
+            {"Score": chart_data.values()},
+            index=chart_data.keys(),
+        )
+        st.bar_chart(chart, y="Score")
+    else:
+        st.info("Score charts will appear after your evaluations produce numeric metric scores.")
+
+    if any(hallucination_outcomes.values()):
+        st.subheader("Hallucination outcomes")
+        st.caption("Counts reflect the evaluator's detected, not detected, or uncertain classifications.")
+        st.bar_chart(
+            pd.DataFrame(
+                {"Evaluations": hallucination_outcomes.values()},
+                index=hallucination_outcomes.keys(),
+            ),
+            y="Evaluations",
+        )
+
+    st.markdown("---")
+
+
+def render_single_result_charts(result):
+    score_data = single_score_data(result)
+    st.subheader("Evaluation score comparison")
+    if score_data.empty:
+        st.info("No numeric evaluation scores were returned for this response.")
+    else:
+        st.bar_chart(score_data, y="Score", y_label="Score (0-10)", height=320)
+
+    if "Hallucination" not in score_data.index:
+        status = hallucination_status(result)
+        if status:
+            st.metric("Hallucination classification", status)
+        st.caption(
+            "The current hallucination evaluator returns a classification, not a numeric score; "
+            "no hallucination score is inferred."
+        )
+
+
+def render_batch_result_charts(results):
+    response_scores, verdict_counts, average_scores = batch_chart_data(results)
+    st.markdown("---")
+    st.subheader("Batch score comparison")
+    if response_scores.empty:
+        st.info("No numeric scores are available to chart for this batch.")
+    else:
+        st.bar_chart(
+            response_scores,
+            x="Response",
+            y=list(response_scores.columns[1:]),
+            y_label="Score (0-10)",
+            height=380,
+        )
+        st.caption("Each bar uses a numeric score returned by the evaluator; missing scores are omitted.")
+    if (
+        "Hallucination" in results.columns
+        and "Hallucination" not in response_scores.columns
+        and "Hallucination Score" not in response_scores.columns
+    ):
+        st.caption(
+            "Hallucination is returned as a classification for this batch, not a numeric score, "
+            "so it is not converted into a score."
+        )
+
+    st.subheader("Verdict counts")
+    st.bar_chart(verdict_counts, x="Verdict", y="Count", y_label="Responses", height=260)
+
+    if average_scores.empty:
+        st.info("Average score summary is unavailable because no numeric scores were returned.")
+    else:
+        st.subheader("Average evaluation scores")
+        st.bar_chart(
+            average_scores,
+            y="Average Score",
+            y_label="Average score (0-10)",
+            height=300,
+        )
 
 
 # ============================================================
@@ -1820,9 +2332,32 @@ def create_batch_pdf(results_df):
 # SIDEBAR NAVIGATION
 # ============================================================
 
+if not st.session_state.get("auth_token"):
+    show_auth_page()
+    st.stop()
+
+try:
+    current_user_response = requests.get(
+        f"{AUTH_URL}/me",
+        headers=auth_headers(),
+        timeout=15,
+    )
+except requests.RequestException as error:
+    st.error(f"Cannot connect to the API. Start the FastAPI backend and try again. ({error})")
+    st.stop()
+
+if current_user_response.status_code == 401:
+    clear_auth_state()
+    st.rerun()
+if not current_user_response.ok:
+    st.error(f"Unable to validate your session: {current_user_response.text}")
+    st.stop()
+st.session_state.auth_user = current_user_response.json()
+
 st.sidebar.title(
-    "🤖 LLM Evaluation"
+    "AegisEval"
 )
+st.sidebar.caption(f"Signed in as {st.session_state.auth_user['full_name']}")
 
 page = st.sidebar.radio(
     "Navigation",
@@ -1831,9 +2366,23 @@ page = st.sidebar.radio(
         "🔍 Single Evaluation",
         "📊 Batch Evaluation",
         "📋 Results",
+        "📜 History",
         "ℹ️ About",
     ],
 )
+
+if st.sidebar.button("Log out", width="stretch"):
+    try:
+        logout_response = requests.post(
+            f"{AUTH_URL}/logout",
+            headers=auth_headers(),
+            timeout=15,
+        )
+        logout_response.raise_for_status()
+        clear_auth_state()
+        st.rerun()
+    except requests.RequestException as error:
+        st.sidebar.error(f"Unable to log out: {error}")
 
 
 # ============================================================
@@ -1844,10 +2393,12 @@ if page == "🏠 Dashboard":
 
     st.markdown(
         '<div class="main-title">'
-        '🤖 LLM Evaluation Dashboard'
+        'AegisEval Dashboard'
         '</div>',
         unsafe_allow_html=True
     )
+
+    render_account_dashboard()
 
     st.markdown(
         '<div class="sub-title">'
@@ -2902,6 +3453,7 @@ elif page == "🔍 Single Evaluation":
                     api_response = requests.post(
                         API_URL,
                         json=payload,
+                        headers=auth_headers(),
                         timeout=120,
                     )
 
@@ -2937,7 +3489,7 @@ elif page == "🔍 Single Evaluation":
                     )
 
                     s2.metric(
-                        "Factuality",
+                        "Accuracy (Factuality)",
                         format_score(
                             normalize_score(
                                 data.get(
@@ -2970,6 +3522,8 @@ elif page == "🔍 Single Evaluation":
                             )
                         )
                     )
+
+                    render_single_result_charts(data)
 
                     st.markdown("---")
 
@@ -3012,6 +3566,8 @@ elif page == "🔍 Single Evaluation":
                         clean_verdict(verdict)
                     )
 
+                    st.metric("Evaluation verdict", clean_verdict(verdict))
+
                     st.write(
                         data.get(
                             "verdict_consolidated_reasoning",
@@ -3045,7 +3601,7 @@ elif page == "🔍 Single Evaluation":
 
                 st.error(
                     "FastAPI backend is not running. "
-                    "Start the backend on port 8001."
+                    "Start the backend on port 8000."
                 )
 
             except requests.exceptions.Timeout:
@@ -3378,6 +3934,7 @@ elif page == "📊 Batch Evaluation":
                                 api_response = requests.post(
                                     API_URL,
                                     json=payload,
+                                    headers=auth_headers(),
                                     timeout=120,
                                 )
 
@@ -3573,7 +4130,7 @@ elif page == "📊 Batch Evaluation":
                                         "Verdict": "ERROR",
                                         "Error": (
                                             "FastAPI backend connection "
-                                            "failed. Make sure port 8001 "
+                                            "failed. Make sure port 8000 "
                                             "is running."
                                         ),
                                     }
@@ -3661,6 +4218,8 @@ elif page == "📊 Batch Evaluation":
                             width="stretch",
                             hide_index=True,
                         )
+
+                        render_batch_result_charts(results_df)
 
                         # ====================================================
                         # CSV DOWNLOAD
@@ -3788,6 +4347,8 @@ elif page == "📋 Results":
             hide_index=True,
         )
 
+        render_batch_result_charts(results_df)
+
         download_df = (
             results_df.copy()
         )
@@ -3847,6 +4408,57 @@ elif page == "📋 Results":
                 f"Unable to generate PDF: "
                 f"{pdf_error}"
             )
+
+
+# ============================================================
+# EVALUATION HISTORY
+# ============================================================
+
+elif page == "📜 History":
+
+    st.title("Evaluation History")
+    try:
+        history_response = requests.get(
+            f"{AUTH_URL}/history",
+            headers=auth_headers(),
+            timeout=20,
+        )
+        history_response.raise_for_status()
+        evaluations = history_response.json().get("evaluations", [])
+    except requests.RequestException as error:
+        st.error(f"Unable to load your evaluation history: {error}")
+        evaluations = []
+    except ValueError as error:
+        st.error(f"The API returned invalid history data: {error}")
+        evaluations = []
+
+    if evaluations:
+        history = pd.DataFrame(evaluations)
+        history = history.rename(
+            columns={
+                "created_at": "Created",
+                "question": "Question",
+                "response": "AI Response",
+                "reference_answer": "Reference Answer",
+                "verdict": "Verdict",
+                "overall_score": "Overall Score",
+            }
+        )
+        display_columns = [
+            column
+            for column in (
+                "Created",
+                "Question",
+                "AI Response",
+                "Reference Answer",
+                "Verdict",
+                "Overall Score",
+            )
+            if column in history.columns
+        ]
+        st.dataframe(history[display_columns], hide_index=True, use_container_width=True)
+    else:
+        st.info("No saved evaluations yet. Run an evaluation to start your history.")
 
 
 # ============================================================

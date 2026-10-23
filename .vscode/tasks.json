@@ -1,0 +1,34 @@
+{
+  "tasks": [
+    {
+      "label": "Install dependencies",
+      "type": "shell",
+      "command": "python -m venv .venv; .\\.venv\\Scripts\\Activate.ps1; python -m pip install --upgrade pip; pip install -r requirements.txt",
+      "inAgents": true,
+      "runOptions": {
+        "runOn": "worktreeCreated"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "label": "Start backend",
+      "type": "shell",
+      "command": ".\\.venv\\Scripts\\Activate.ps1; uvicorn backend.main:app --reload",
+      "inAgents": true,
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "label": "Start frontend",
+      "type": "shell",
+      "command": ".\\.venv\\Scripts\\Activate.ps1; streamlit run frontend/app.py",
+      "inAgents": true,
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    }
+  ]
+}

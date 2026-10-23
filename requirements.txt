@@ -1,9 +1,12 @@
 fastapi
 uvicorn
 streamlit
+pandas
+reportlab
 openai
 python-dotenv
 pydantic
+email-validator
 langchain
 langgraph
 sentence-transformers
