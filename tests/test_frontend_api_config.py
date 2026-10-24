@@ -1,7 +1,4 @@
-git status
-git add frontend/__init__.py frontend/app.py frontend/api_config.py tests/test_frontend_api_config.py
-git commit -m "Fix Streamlit frontend API config import path"
-git push origin <your-branch-name>import ast
+import ast
 from pathlib import Path
 
 import pytest

@@ -14,7 +14,6 @@ import pandas as pd
 import requests
 
 from frontend.api_config import (
-    DEFAULT_API_TIMEOUT_SECONDS,
     get_api_base_url,
     get_api_timeout,
 )
@@ -323,7 +322,7 @@ st.markdown(
 # ============================================================
 
 API_BASE_URL = get_api_base_url(st.secrets, os.environ)
-API_TIMEOUT_SECONDS = get_api_timeout(st.secrets, os.environ, DEFAULT_API_TIMEOUT_SECONDS)
+API_TIMEOUT_SECONDS = get_api_timeout(st.secrets, os.environ)
 API_TIMEOUT = (10, API_TIMEOUT_SECONDS)
 API_URL = f"{API_BASE_URL}/evaluate"
 AUTH_URL = f"{API_BASE_URL}/auth"
