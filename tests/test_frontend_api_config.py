@@ -1,5 +1,8 @@
+from pathlib import Path
+
 import pytest
 
+import frontend.api_config as api_config
 from frontend.api_config import (
     DEFAULT_API_BASE_URL,
     DEFAULT_API_TIMEOUT_SECONDS,
@@ -7,6 +10,12 @@ from frontend.api_config import (
     get_api_base_url,
     get_api_timeout,
 )
+
+
+def test_frontend_api_config_imports_from_project_package():
+    assert Path(api_config.__file__).resolve() == (
+        Path(__file__).resolve().parents[1] / "frontend" / "api_config.py"
+    )
 
 
 def test_api_url_prefers_streamlit_secret_and_removes_trailing_slash():

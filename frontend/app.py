@@ -5,8 +5,9 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 project_root_string = str(PROJECT_ROOT)
-if project_root_string not in sys.path:
-    sys.path.insert(0, project_root_string)
+if project_root_string in sys.path:
+    sys.path.remove(project_root_string)
+sys.path.insert(0, project_root_string)
 
 import streamlit as st
 import pandas as pd
