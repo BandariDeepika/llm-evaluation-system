@@ -12,7 +12,11 @@ import streamlit as st
 import pandas as pd
 import requests
 
-from frontend.api_config import get_api_base_url
+from frontend.api_config import (
+    DEFAULT_API_TIMEOUT_SECONDS,
+    get_api_base_url,
+    get_api_timeout,
+)
 from frontend.chart_data import (
     batch_chart_data,
     hallucination_status,
@@ -318,8 +322,35 @@ st.markdown(
 # ============================================================
 
 API_BASE_URL = get_api_base_url(st.secrets, os.environ)
+API_TIMEOUT_SECONDS = get_api_timeout(st.secrets, os.environ, DEFAULT_API_TIMEOUT_SECONDS)
+API_TIMEOUT = (10, API_TIMEOUT_SECONDS)
 API_URL = f"{API_BASE_URL}/evaluate"
 AUTH_URL = f"{API_BASE_URL}/auth"
+
+
+def api_request_error(error, action="request"):
+    if isinstance(error, requests.Timeout):
+        return (
+            f"The API did not respond within {API_TIMEOUT_SECONDS:g} seconds while "
+            f"trying to {action}. Render may be waking the service; please retry. "
+            "If this continues, check the Render service logs."
+        )
+    if isinstance(error, requests.ConnectionError):
+        return (
+            f"Could not connect to the API at {API_BASE_URL}. Verify the "
+            "API_BASE_URL Streamlit secret matches the running Render service."
+        )
+    return f"API {action} failed: {error}"
+
+
+def api_response_error(response, action):
+    try:
+        detail = response.json().get("detail")
+    except (ValueError, AttributeError):
+        detail = None
+    if not detail:
+        detail = "The server returned an unexpected response."
+    return f"Unable to {action} (HTTP {response.status_code}): {detail}"
 
 
 # ============================================================
@@ -413,7 +444,7 @@ def show_auth_page():
             response = requests.post(
                 f"{AUTH_URL}/{endpoint}",
                 json=payload,
-                timeout=20,
+                timeout=API_TIMEOUT,
             )
             if response.ok:
                 result = response.json()
@@ -434,8 +465,8 @@ def show_auth_page():
             except (ValueError, AttributeError):
                 detail = "Unable to authenticate. Check the backend connection."
             st.error(str(detail))
-        except requests.RequestException:
-            st.error("Cannot connect to the API. Start the FastAPI backend and try again.")
+        except requests.RequestException as error:
+            st.error(api_request_error(error, "authenticate"))
 
 
 def clear_auth_state():
@@ -450,13 +481,13 @@ def render_account_dashboard():
         dashboard_response = requests.get(
             f"{AUTH_URL}/dashboard",
             headers=auth_headers(),
-            timeout=20,
+            timeout=API_TIMEOUT,
         )
         dashboard_response.raise_for_status()
         summary = dashboard_response.json()
         evaluations = summary.get("evaluations", [])
     except requests.RequestException as error:
-        st.error(f"Unable to load your account dashboard: {error}")
+        st.error(api_request_error(error, "load your account dashboard"))
         return
     except ValueError as error:
         st.error(f"The API returned invalid dashboard data: {error}")
@@ -2345,17 +2376,17 @@ try:
     current_user_response = requests.get(
         f"{AUTH_URL}/me",
         headers=auth_headers(),
-        timeout=15,
+        timeout=API_TIMEOUT,
     )
 except requests.RequestException as error:
-    st.error(f"Cannot connect to the API. Start the FastAPI backend and try again. ({error})")
+    st.error(api_request_error(error, "validate your session"))
     st.stop()
 
 if current_user_response.status_code == 401:
     clear_auth_state()
     st.rerun()
 if not current_user_response.ok:
-    st.error(f"Unable to validate your session: {current_user_response.text}")
+    st.error(api_response_error(current_user_response, "validate your session"))
     st.stop()
 st.session_state.auth_user = current_user_response.json()
 
@@ -2381,13 +2412,13 @@ if st.sidebar.button("Log out", width="stretch"):
         logout_response = requests.post(
             f"{AUTH_URL}/logout",
             headers=auth_headers(),
-            timeout=15,
+            timeout=API_TIMEOUT,
         )
         logout_response.raise_for_status()
         clear_auth_state()
         st.rerun()
     except requests.RequestException as error:
-        st.sidebar.error(f"Unable to log out: {error}")
+        st.sidebar.error(api_request_error(error, "log out"))
 
 
 # ============================================================
@@ -3411,7 +3442,10 @@ elif page == "🔍 Single Evaluation":
 
     use_kb = st.checkbox(
         "Use Knowledge Base",
-        value=True
+        value=False
+    )
+    st.caption(
+        "Knowledge Base retrieval is optional and may take longer on its first use while the embedding model loads."
     )
 
     top_k = st.number_input(
@@ -3459,7 +3493,7 @@ elif page == "🔍 Single Evaluation":
                         API_URL,
                         json=payload,
                         headers=auth_headers(),
-                        timeout=120,
+                        timeout=API_TIMEOUT,
                     )
 
                 if api_response.status_code == 200:
@@ -3592,28 +3626,10 @@ elif page == "🔍 Single Evaluation":
                         )
 
                 else:
+                    st.error(api_response_error(api_response, "evaluate this response"))
 
-                    st.error(
-                        f"API Error "
-                        f"{api_response.status_code}"
-                    )
-
-                    st.code(
-                        api_response.text
-                    )
-
-            except requests.exceptions.ConnectionError:
-
-                st.error(
-                    "FastAPI backend is not running. "
-                    "Start the backend on port 8000."
-                )
-
-            except requests.exceptions.Timeout:
-
-                st.error(
-                    "FastAPI request timed out."
-                )
+            except requests.RequestException as error:
+                st.error(api_request_error(error, "evaluate this response"))
 
             except Exception as e:
 
@@ -3940,7 +3956,7 @@ elif page == "📊 Batch Evaluation":
                                     API_URL,
                                     json=payload,
                                     headers=auth_headers(),
-                                    timeout=120,
+                                    timeout=API_TIMEOUT,
                                 )
 
                                 # ------------------------------------
@@ -4095,10 +4111,9 @@ elif page == "📊 Batch Evaluation":
                                             "Question": question_value,
                                             "AI Response": response_value,
                                             "Verdict": "ERROR",
-                                            "Error": (
-                                                f"API returned "
-                                                f"{api_response.status_code}: "
-                                                f"{api_response.text[:300]}"
+                                            "Error": api_response_error(
+                                                api_response,
+                                                "evaluate this batch item",
                                             ),
                                         }
                                     )
@@ -4107,7 +4122,7 @@ elif page == "📊 Batch Evaluation":
                             # TIMEOUT
                             # ----------------------------------------
 
-                            except requests.exceptions.Timeout:
+                            except requests.exceptions.Timeout as error:
 
                                 results.append(
                                     {
@@ -4116,7 +4131,7 @@ elif page == "📊 Batch Evaluation":
                                         "AI Response": response_value,
                                         "Verdict": "ERROR",
                                         "Error": (
-                                            "FastAPI request timed out."
+                                            api_request_error(error, "evaluate this batch item")
                                         ),
                                     }
                                 )
@@ -4125,7 +4140,7 @@ elif page == "📊 Batch Evaluation":
                             # CONNECTION ERROR
                             # ----------------------------------------
 
-                            except requests.exceptions.ConnectionError:
+                            except requests.exceptions.ConnectionError as error:
 
                                 results.append(
                                     {
@@ -4134,9 +4149,7 @@ elif page == "📊 Batch Evaluation":
                                         "AI Response": response_value,
                                         "Verdict": "ERROR",
                                         "Error": (
-                                            "FastAPI backend connection "
-                                            "failed. Make sure port 8000 "
-                                            "is running."
+                                            api_request_error(error, "evaluate this batch item")
                                         ),
                                     }
                                 )
@@ -4426,12 +4439,12 @@ elif page == "📜 History":
         history_response = requests.get(
             f"{AUTH_URL}/history",
             headers=auth_headers(),
-            timeout=20,
+            timeout=API_TIMEOUT,
         )
         history_response.raise_for_status()
         evaluations = history_response.json().get("evaluations", [])
     except requests.RequestException as error:
-        st.error(f"Unable to load your evaluation history: {error}")
+        st.error(api_request_error(error, "load your evaluation history"))
         evaluations = []
     except ValueError as error:
         st.error(f"The API returned invalid history data: {error}")

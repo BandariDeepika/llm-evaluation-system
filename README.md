@@ -103,3 +103,58 @@ pytest
 For HTTPS deployments, set `AEGISEVAL_COOKIE_SECURE=true`. The Streamlit client authenticates API requests using its session token; session tokens are stored as hashes in SQLite.
 
 The application does not automatically download datasets during evaluation. Index the local ChromaDB knowledge base separately before enabling retrieval.
+
+## Public deployment (Render API + Streamlit Community Cloud)
+
+The API URL defaults to the project's Render service so the Streamlit Community
+Cloud process does not try to reach its own `localhost`. You can override it
+with a Streamlit secret named `API_BASE_URL` (or the
+`AEGISEVAL_API_URL` environment variable). For local development, set
+`AEGISEVAL_API_URL=http://localhost:8000`.
+
+### Render backend
+
+1. In Render, create or update a **Web Service** connected to this repository,
+   using the repository root as the root directory.
+2. Use `pip install -r requirements.txt` as the build command and
+   `uvicorn backend.main:app --host 0.0.0.0 --port $PORT` as the start command.
+   Set the health-check path to `/health`.
+3. Add a persistent disk mounted at `/var/data` and set
+   `APP_DATABASE_PATH=/var/data/aegiseval.db`. The included `render.yaml`
+   describes this setup. A persistent disk requires a paid Render instance;
+   without it, SQLite accounts, sessions, and history may be lost when the
+   service restarts or redeploys.
+4. Set `AEGISEVAL_COOKIE_SECURE=true` for the HTTPS deployment. No OpenAI key
+   is required by the current deterministic evaluation implementation.
+
+The service uses SQLite, which is appropriate for a single Render instance.
+Do not scale this service to multiple instances while using its local SQLite
+database. If the existing deployment already has users or history in its
+ephemeral `data/aegiseval.db`, changing `APP_DATABASE_PATH` to `/var/data` does
+not migrate that file; export or copy the old database before switching paths
+if those records must be retained.
+
+### Streamlit Community Cloud frontend
+
+1. Create a Community Cloud app from this repository and set the app file to
+   `frontend/app.py`.
+2. In **Advanced settings → Secrets**, configure:
+
+   ```toml
+   API_BASE_URL = "https://llm-evaluation-system-o5uf.onrender.com"
+   API_TIMEOUT_SECONDS = "180"
+   ```
+
+   `API_BASE_URL` must be the Render service's public HTTPS URL, without
+   `/evaluate` or `/auth`. `API_TIMEOUT_SECONDS` controls the read timeout for
+   API calls; the frontend uses a 10-second connection timeout separately.
+   The application defaults to 180 seconds because KB-backed evaluations may
+   need to load the embedding model on their first use. KB retrieval is
+   opt-in; supplying a reference answer or source document avoids that model
+   loading path.
+3. Redeploy/restart the Streamlit app after changing secrets. Check that
+   `https://llm-evaluation-system-o5uf.onrender.com/health` returns HTTP 200,
+   then register a test account, log in, run an evaluation, and check History.
+
+Do not commit credentials or local secrets files. Set environment variables
+in each hosting provider's dashboard; the public API URL is not a credential.

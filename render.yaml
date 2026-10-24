@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: aegiseval-api
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    disk:
+      name: aegiseval-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: APP_DATABASE_PATH
+        value: /var/data/aegiseval.db
+      - key: AEGISEVAL_COOKIE_SECURE
+        value: "true"

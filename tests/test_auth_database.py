@@ -13,6 +13,18 @@ def test_password_hashes_are_salted_and_verifiable():
     assert not database.verify_password("password", "pbkdf2_sha256$999999999$00$00")
 
 
+def test_database_uses_wal_and_waits_for_concurrent_writes(tmp_path, monkeypatch):
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "wal.sqlite3")
+    database.initialize_database()
+
+    with database.get_db_connection() as connection:
+        journal_mode = connection.execute("PRAGMA journal_mode").fetchone()[0]
+        busy_timeout = connection.execute("PRAGMA busy_timeout").fetchone()[0]
+
+    assert journal_mode.lower() == "wal"
+    assert busy_timeout == 30_000
+
+
 def test_evaluation_history_and_dashboard_are_isolated_by_user(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "accounts.sqlite3")
     database.initialize_database()

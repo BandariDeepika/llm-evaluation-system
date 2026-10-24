@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -15,6 +16,7 @@ router = APIRouter(
     prefix="/evaluate",
     tags=["Evaluation"],
 )
+logger = logging.getLogger(__name__)
 
 
 def _read_token(request: Request) -> Optional[str]:
@@ -64,9 +66,10 @@ def evaluate(
         ) from error
 
     except Exception as error:
+        logger.exception("Evaluation request failed")
         raise HTTPException(
             status_code=500,
-            detail=f"{type(error).__name__}: {error}",
+            detail="Evaluation could not be completed. Please retry, and check the backend logs if it continues.",
         ) from error
 
 
