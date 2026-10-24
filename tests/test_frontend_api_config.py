@@ -1,3 +1,7 @@
+git status
+git add frontend/__init__.py frontend/app.py frontend/api_config.py tests/test_frontend_api_config.py
+git commit -m "Fix Streamlit frontend API config import path"
+git push origin <your-branch-name>import ast
 from pathlib import Path
 
 import pytest
@@ -16,6 +20,20 @@ def test_frontend_api_config_imports_from_project_package():
     assert Path(api_config.__file__).resolve() == (
         Path(__file__).resolve().parents[1] / "frontend" / "api_config.py"
     )
+
+
+def test_app_imported_api_config_names_exist():
+    project_root = Path(__file__).resolve().parents[1]
+    app_tree = ast.parse((project_root / "frontend" / "app.py").read_text(encoding="utf-8"))
+    imported_names = {
+        alias.name
+        for node in ast.walk(app_tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "frontend.api_config"
+        for alias in node.names
+    }
+
+    assert imported_names
+    assert imported_names <= vars(api_config).keys()
 
 
 def test_api_url_prefers_streamlit_secret_and_removes_trailing_slash():
